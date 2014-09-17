@@ -48,6 +48,8 @@ public:
     static const char *LOOPDIR;
     static const char *BLKID_PATH;
 
+    static const int MAX_PARTITIONS = 32;
+
 protected:
     char* mLabel;
     char* mUuid;

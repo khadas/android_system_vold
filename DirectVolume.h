@@ -36,8 +36,6 @@ private:
 typedef android::List<PathInfo *> PathCollection;
 
 class DirectVolume : public Volume {
-public:
-    static const int MAX_PARTITIONS = 32;
 protected:
     const char* mMountpoint;
     const char* mFuseMountpoint;

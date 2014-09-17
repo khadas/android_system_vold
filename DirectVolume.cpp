@@ -395,7 +395,7 @@ void DirectVolume::handlePartitionRemoved(const char * /*devpath*/,
  * Called from base to get a list of devicenodes for mounting
  */
 int DirectVolume::getDeviceNodes(dev_t *devs, int max) {
-
+    /*have get a udisk have two partitions and mount as /dev/sda1 and /dev/sda5*/
     if (mPartIdx == -1) {
         // If the disk has no partitions, try the disk itself
         if (!mDiskNumParts) {
@@ -404,12 +404,14 @@ int DirectVolume::getDeviceNodes(dev_t *devs, int max) {
         }
 
         int i;
+        int j = 0;
         for (i = 0; i < mDiskNumParts; i++) {
             if (i == max)
                 break;
-            devs[i] = MKDEV(mDiskMajor, mPartMinors[i]);
+            if(mPartMinors[i] > 0)
+                devs[j++] = MKDEV(mDiskMajor, mPartMinors[i]);
         }
-        return mDiskNumParts;
+        return j;
     }
     devs[0] = MKDEV(mDiskMajor, mPartMinors[mPartIdx -1]);
     return 1;
