@@ -46,6 +46,10 @@
 #include "VolumeManager.h"
 #include "ResponseCode.h"
 #include "Fat.h"
+#include "Ntfs.h"
+#include "Exfat.h"
+#include "Hfsplus.h"
+#include "Iso9660.h"
 #include "Process.h"
 #include "cryptfs.h"
 
@@ -117,7 +121,7 @@ Volume::Volume(VolumeManager *vm, const fstab_rec* rec, int flags) {
     mUserLabel = NULL;
     mState = Volume::State_Init;
     mFlags = flags;
-    mCurrentlyMountedKdev = -1;
+    mCurrentlyMountedKdevs.clear();
     mPartIdx = rec->partnum;
     mRetryMount = false;
 }
@@ -241,7 +245,6 @@ int Volume::formatVol(bool wipe) {
     if (isMountpointMounted(getMountpoint())) {
         SLOGW("Volume is idle but appears to be mounted - fixing");
         setState(Volume::State_Mounted);
-        // mCurrentlyMountedKdev = XXX
         errno = EBUSY;
         return -1;
     }
@@ -352,7 +355,6 @@ int Volume::mountVol() {
     if (isMountpointMounted(getMountpoint())) {
         SLOGW("Volume is idle but appears to be mounted - fixing");
         setState(Volume::State_Mounted);
-        // mCurrentlyMountedKdev = XXX
         return 0;
     }
 
@@ -411,6 +413,9 @@ int Volume::mountVol() {
         }
     }
 
+    bool hasPartitionMounted = false;
+    bool isUdisk = (strstr(getMountpoint(), "udisk") != NULL);
+
     for (i = 0; i < n; i++) {
         char devicePath[255];
 
@@ -422,24 +427,7 @@ int Volume::mountVol() {
         errno = 0;
         setState(Volume::State_Checking);
 
-        if (Fat::check(devicePath)) {
-            if (errno == ENODATA) {
-                SLOGW("%s does not contain a FAT filesystem\n", devicePath);
-                continue;
-            }
-            errno = EIO;
-            /* Badness - abort the mount */
-            SLOGE("%s failed FS checks (%s)", devicePath, strerror(errno));
-            setState(Volume::State_Idle);
-            return -1;
-        }
-
-        errno = 0;
-        int gid;
-
-        if (Fat::doMount(devicePath, getMountpoint(), false, false, false,
-                AID_MEDIA_RW, AID_MEDIA_RW, 0007, true)) {
-            SLOGE("%s failed to mount via VFAT (%s)\n", devicePath, strerror(errno));
+        if(smartMount(devicePath, i)){
             continue;
         }
 
@@ -452,12 +440,18 @@ int Volume::mountVol() {
             return -1;
         }
 
+        hasPartitionMounted = true;
+        mCurrentlyMountedKdevs.add(i, deviceNodes[i]); 
+        if(!isUdisk)
+           break;
+    }
+
+    if(hasPartitionMounted){
         char service[64];
         snprintf(service, 64, "fuse_%s", getLabel());
         property_set("ctl.start", service);
 
         setState(Volume::State_Mounted);
-        mCurrentlyMountedKdev = deviceNodes[i];
         return 0;
     }
 
@@ -465,6 +459,97 @@ int Volume::mountVol() {
     setState(Volume::State_Idle);
 
     return -1;
+}
+
+int Volume::smartMount(char *devicePath, int part){
+    char mountPoint[255];
+    bool mayContainVfat = true;
+    bool mayContainExfat = true;
+
+    if (Fat::check(devicePath)) {
+        if (errno == ENODATA){
+            mayContainVfat = false;
+            SLOGW("%s does not contain a FAT filesystem\n", devicePath);
+            if (Exfat::check(devicePath)) {
+                if (errno == ENODATA) {
+                    mayContainExfat = false;
+                    SLOGW("%s does not contain an Exfat filesystem\n", devicePath);
+                }else{
+                    errno = EIO;
+                    /* Badness - abort the mount */
+                    SLOGE("%s failed FS checks (%s)", devicePath, strerror(errno));
+                    setState(Volume::State_Idle);
+                    return -1;
+                 }
+            }
+        }else{
+            errno = EIO;
+            /* Badness - abort the mount */
+            SLOGE("%s failed FS checks (%s)", devicePath, strerror(errno));
+            setState(Volume::State_Idle);
+            return -1;
+        }
+    }
+
+    errno = 0;
+
+    bool isUdisk = (strstr(getMountpoint(), "udisk") != NULL);
+    if(isUdisk){
+        sprintf(mountPoint, "%s/part%d", getMountpoint(), part);
+        mkdir(mountPoint, 0755);
+    }else{
+        strcpy(mountPoint,getMountpoint()); 
+    }
+
+    //Fat
+    if (mayContainVfat) {
+        if(Fat::doMount(devicePath, mountPoint, false, false, false,
+              AID_MEDIA_RW, AID_MEDIA_RW, 0007, true)) {
+            SLOGW("%s failed to mount via VFAT (%s)\n", devicePath, strerror(errno));
+            return -1;
+        }
+        SLOGI("Successfully mount %s as VFAT", devicePath);
+        return 0;
+    }
+
+    //Exfat
+    if(mayContainExfat){
+        if (Exfat::doMount(devicePath, mountPoint, false, false, AID_MEDIA_RW,
+              AID_MEDIA_RW, 0007, true)) {
+            SLOGW("%s failed to mount via EXFAT (%s)", devicePath, strerror(errno));
+            return -1;
+        }
+        SLOGI("Successfully mount %s as EXFAT", devicePath);
+        return 0;
+    }
+     
+    //Ntfs
+    if(Ntfs::doMount(devicePath, mountPoint, false, false, AID_MEDIA_RW,
+           AID_MEDIA_RW, 0007, true)) {
+        SLOGW("%s failed to mount via NTFS (%s).",devicePath, strerror(errno));
+        //Hfs
+        if (Hfsplus::doMount(devicePath, mountPoint, false, false, AID_MEDIA_RW, 
+               AID_MEDIA_RW, 0007, true)) {
+            if (isUdisk) {
+                SLOGW("%s failed to mount via HFS+ (%s).",
+                                devicePath, strerror(errno));
+                //ISO9660
+                if (iso9660::doMount(devicePath, mountPoint, false, false, AID_MEDIA_RW, AID_MEDIA_RW, 0007, true)) {
+                    SLOGW("%s failed to mount via ISO9660(%s)", devicePath, strerror(errno));
+                    return -1;
+                }else{
+                    SLOGI("Successfully mount %s as ISO9660", devicePath);
+                }
+            }else{
+                SLOGW("%s failed to mount via HFS(%s)", devicePath, strerror(errno));
+                return -1;
+            }
+        }
+    }else{
+        SLOGI("Successfully mount %s as NTFS", devicePath);
+    }
+
+    return 0;
 }
 
 int Volume::mountAsecExternal() {
@@ -534,6 +619,7 @@ int Volume::unmountVol(bool force, bool revert) {
 
     int flags = getFlags();
     bool providesAsec = (flags & VOL_PROVIDES_ASEC) != 0;
+    bool isUdisk = strstr(getMountpoint(), "udisk") != NULL;
 
     if (getState() != Volume::State_Mounted) {
         SLOGE("Volume %s unmount request when not mounted", getLabel());
@@ -562,11 +648,22 @@ int Volume::unmountVol(bool force, bool revert) {
         SLOGE("Failed to unmount %s (%s)", getFuseMountpoint(), strerror(errno));
         goto fail_remount_secure;
     }
+    if(isUdisk){
+        char mountPoint[255];
+        for (size_t i = 0; i < mCurrentlyMountedKdevs.size(); i++){
+            sprintf(mountPoint, "%s/part%d", getMountpoint(), mCurrentlyMountedKdevs.keyAt(i));
 
-    /* Unmount the real sd card */
-    if (doUnmount(getMountpoint(), force) != 0) {
-        SLOGE("Failed to unmount %s (%s)", getMountpoint(), strerror(errno));
-        goto fail_remount_secure;
+            /* Unmount the real udisk */
+            if (doUnmount(mountPoint, force) != 0) {
+                SLOGE("Failed to unmount %s (%s)", getMountpoint(), strerror(errno));
+            }
+        }
+    }else{
+        /* Unmount the real sd card */
+        if (doUnmount(getMountpoint(), force) != 0) {
+            SLOGE("Failed to unmount %s (%s)", getMountpoint(), strerror(errno));
+            goto fail_remount_secure;
+        }
     }
 
     SLOGI("%s unmounted successfully", getMountpoint());
@@ -584,7 +681,7 @@ int Volume::unmountVol(bool force, bool revert) {
     setUuid(NULL);
     setUserLabel(NULL);
     setState(Volume::State_Idle);
-    mCurrentlyMountedKdev = -1;
+    mCurrentlyMountedKdevs.clear();
     return 0;
 
 fail_remount_secure:

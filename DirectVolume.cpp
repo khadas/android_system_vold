@@ -352,8 +352,15 @@ void DirectVolume::handlePartitionRemoved(const char * /*devpath*/,
     if (state != Volume::State_Mounted && state != Volume::State_Shared) {
         return;
     }
-        
-    if ((dev_t) MKDEV(major, minor) == mCurrentlyMountedKdev) {
+    bool rmMountedDev = false;
+    for (size_t i = 0; i < mCurrentlyMountedKdevs.size(); i++) {
+       if ((dev_t) MKDEV(major, minor) == mCurrentlyMountedKdevs.valueAt(i)){
+           rmMountedDev = true;
+           break;
+       }
+    }
+
+    if (rmMountedDev) {
         /*
          * Yikes, our mounted partition is going away!
          */

@@ -18,6 +18,7 @@
 #define _VOLUME_H
 
 #include <utils/List.h>
+#include <utils/KeyedVector.h>
 #include <fs_mgr.h>
 
 class NetlinkEvent;
@@ -63,7 +64,7 @@ protected:
     /*
      * The major/minor tuple of the currently mounted filesystem.
      */
-    dev_t mCurrentlyMountedKdev;
+    android::KeyedVector<int, dev_t> mCurrentlyMountedKdevs;
 
 public:
     Volume(VolumeManager *vm, const fstab_rec* rec, int flags);
@@ -110,6 +111,7 @@ private:
     int mountAsecExternal();
     int doUnmount(const char *path, bool force);
     int extractMetadata(const char* devicePath);
+    int smartMount(char *devicePath, int part);
 };
 
 typedef android::List<Volume *> VolumeCollection;

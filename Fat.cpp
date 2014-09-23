@@ -84,17 +84,18 @@ int Fat::check(const char *fsPath) {
 
         switch(status) {
         case 0:
-            SLOGI("Filesystem check completed OK");
+            SLOGI("FAT check completed OK");
             return 0;
 
         case 2:
-            SLOGE("Filesystem check failed (not a FAT filesystem)");
+        case 8:
+            SLOGE("FAT check failed (not a FAT filesystem)");
             errno = ENODATA;
             return -1;
 
         case 4:
             if (pass++ <= 3) {
-                SLOGW("Filesystem modified - rechecking (pass %d)",
+                SLOGW("FAT modified - rechecking (pass %d)",
                         pass);
                 continue;
             }
@@ -103,7 +104,7 @@ int Fat::check(const char *fsPath) {
             return -1;
 
         default:
-            SLOGE("Filesystem check failed (unknown exit code %d)", status);
+            SLOGE("FAT check failed (unknown exit code %d)", status);
             errno = EIO;
             return -1;
         }
@@ -238,19 +239,19 @@ void Fat::wipe(const char *fsPath, unsigned int numSectors) {
             numSectors = get_blkdev_size(fd);
         }
         if (numSectors == 0) {
-            SLOGE("Fat wipe failed to determine size of %s", fsPath);
+            SLOGE("FAT wipe failed to determine size of %s", fsPath);
             close(fd);
             return;
         }
         range[0] = 0;
         range[1] = (unsigned long long)numSectors * 512;
         if (ioctl(fd, BLKDISCARD, &range) < 0) {
-            SLOGE("Fat wipe failed to discard blocks on %s", fsPath);
+            SLOGE("FAT wipe failed to discard blocks on %s", fsPath);
         } else {
-            SLOGI("Fat wipe %d sectors on %s succeeded", numSectors, fsPath);
+            SLOGI("FAT wipe %d sectors on %s succeeded", numSectors, fsPath);
         }
         close(fd);
     } else {
-        SLOGE("Fat wipe failed to open device %s", fsPath);
+        SLOGE("FAT wipe failed to open device %s", fsPath);
     }
 }
