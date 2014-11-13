@@ -61,7 +61,7 @@ int iso9660::doMount(const char *fsPath, const char *mountPoint,
     sprintf(mountData,
             "utf8,uid=%d,gid=%d",ownerUid, ownerGid);
 
-    rc = mount(fsPath, mountPoint, "ISO9660", flags, mountData);
+    rc = mount(fsPath, mountPoint, "iso9660", flags, mountData);
 
     if (rc!=0)
         rc = mount(fsPath, mountPoint, "udf", flags, mountData);
