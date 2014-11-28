@@ -60,7 +60,9 @@ protected:
     int mPartIdx;
     int mOrigPartIdx;
     bool mRetryMount;
-
+#ifdef HAS_VIRTUAL_CDROM
+    char* mLoopMapDir;
+#endif
     /*
      * The major/minor tuple of the currently mounted filesystem.
      */
@@ -93,6 +95,13 @@ public:
     void setDebug(bool enable);
     virtual int getVolInfo(struct volume_info *v) = 0;
 
+#ifdef HAS_VIRTUAL_CDROM
+    bool isContainMountedLoop(Volume *vol);
+    int mountloop(const char *path);
+    int unmountloop(bool force);
+    int loopsetfd(const char * path);
+    int loopclrfd();
+#endif
 protected:
     void setUuid(const char* uuid);
     void setUserLabel(const char* userLabel);
@@ -111,7 +120,7 @@ private:
     int mountAsecExternal();
     int doUnmount(const char *path, bool force);
     int extractMetadata(const char* devicePath);
-    int smartMount(char *devicePath, int part);
+    int smartMount(const char *devicePath, int part);
 };
 
 typedef android::List<Volume *> VolumeCollection;

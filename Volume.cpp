@@ -52,9 +52,14 @@
 #include "Iso9660.h"
 #include "Process.h"
 #include "cryptfs.h"
+#include "Loop.h"
 
 extern "C" void dos_partition_dec(void const *pp, struct dos_partition *d);
 extern "C" void dos_partition_enc(void *pp, struct dos_partition *d);
+
+#ifdef HAS_VIRTUAL_CDROM
+#define LOOP_DEV "/dev/block/loop0"
+#endif
 
 /*
  * Media directory - stuff that only media_rw user can see
@@ -124,6 +129,9 @@ Volume::Volume(VolumeManager *vm, const fstab_rec* rec, int flags) {
     mCurrentlyMountedKdevs.clear();
     mPartIdx = rec->partnum;
     mRetryMount = false;
+#ifdef HAS_VIRTUAL_CDROM
+    mLoopMapDir = NULL;
+#endif
 }
 
 Volume::~Volume() {
@@ -425,9 +433,8 @@ int Volume::mountVol() {
         SLOGI("%s being considered for volume %s\n", devicePath, getLabel());
 
         errno = 0;
-        setState(Volume::State_Checking);
 
-        if(smartMount(devicePath, i)){
+        if (smartMount(devicePath, i)) {
             continue;
         }
 
@@ -461,44 +468,48 @@ int Volume::mountVol() {
     return -1;
 }
 
-int Volume::smartMount(char *devicePath, int part){
+int Volume::smartMount(const char *devicePath, int part){
     char mountPoint[255];
     bool mayContainVfat = true;
     bool mayContainExfat = true;
+    bool isLoop =((getLabel()!= NULL) && (0 == strcmp(getLabel(), "loop")))?true:false;
 
-    if (Fat::check(devicePath)) {
-        if (errno == ENODATA){
-            mayContainVfat = false;
-            SLOGW("%s does not contain a FAT filesystem\n", devicePath);
-            if (Exfat::check(devicePath)) {
-                if (errno == ENODATA) {
-                    mayContainExfat = false;
-                    SLOGW("%s does not contain an Exfat filesystem\n", devicePath);
-                }else{
-                    errno = EIO;
-                    /* Badness - abort the mount */
-                    SLOGE("%s failed FS checks (%s)", devicePath, strerror(errno));
-                    setState(Volume::State_Idle);
-                    return -1;
-                 }
+    if (!isLoop) {
+        setState(Volume::State_Checking);
+        if (Fat::check(devicePath)) {
+            if (errno == ENODATA) {
+                mayContainVfat = false;
+                SLOGW("%s does not contain a FAT filesystem\n", devicePath);
+                if (Exfat::check(devicePath)) {
+                    if (errno == ENODATA) {
+                        mayContainExfat = false;
+                        SLOGW("%s does not contain an Exfat filesystem\n", devicePath);
+                    }else{
+                        errno = EIO;
+                        /* Badness - abort the mount */
+                        SLOGE("%s failed FS checks (%s)", devicePath, strerror(errno));
+                        setState(Volume::State_Idle);
+                        return -1;
+                    }
+                }
+            }else{
+                errno = EIO;
+                /* Badness - abort the mount */
+                SLOGE("%s failed FS checks (%s)", devicePath, strerror(errno));
+                setState(Volume::State_Idle);
+                return -1;
             }
-        }else{
-            errno = EIO;
-            /* Badness - abort the mount */
-            SLOGE("%s failed FS checks (%s)", devicePath, strerror(errno));
-            setState(Volume::State_Idle);
-            return -1;
         }
     }
 
     errno = 0;
 
     bool isUdisk = (strstr(getMountpoint(), "udisk") != NULL);
-    if(isUdisk){
+    if (isUdisk) {
         sprintf(mountPoint, "%s/part%d", getMountpoint(), part);
         mkdir(mountPoint, 0755);
     }else{
-        strcpy(mountPoint,getMountpoint()); 
+        strcpy(mountPoint,getMountpoint());
     }
 
     //Fat
@@ -506,31 +517,35 @@ int Volume::smartMount(char *devicePath, int part){
         if(Fat::doMount(devicePath, mountPoint, false, false, false,
               AID_MEDIA_RW, AID_MEDIA_RW, 0007, true)) {
             SLOGW("%s failed to mount via VFAT (%s)\n", devicePath, strerror(errno));
-            return -1;
+            if (!isLoop)
+                return -1;
+        }else{
+            SLOGI("Successfully mount %s as VFAT", devicePath);
+            return 0;
         }
-        SLOGI("Successfully mount %s as VFAT", devicePath);
-        return 0;
     }
 
     //Exfat
-    if(mayContainExfat){
+    if (mayContainExfat) {
         if (Exfat::doMount(devicePath, mountPoint, false, false, AID_MEDIA_RW,
               AID_MEDIA_RW, 0007, true)) {
             SLOGW("%s failed to mount via EXFAT (%s)", devicePath, strerror(errno));
-            return -1;
+            if (!isLoop)
+                return -1;
+        }else{
+            SLOGI("Successfully mount %s as EXFAT", devicePath);
+            return 0;
         }
-        SLOGI("Successfully mount %s as EXFAT", devicePath);
-        return 0;
     }
-     
+
     //Ntfs
-    if(Ntfs::doMount(devicePath, mountPoint, false, false, AID_MEDIA_RW,
+    if (Ntfs::doMount(devicePath, mountPoint, false, false, AID_MEDIA_RW,
            AID_MEDIA_RW, 0007, true)) {
         SLOGW("%s failed to mount via NTFS (%s).",devicePath, strerror(errno));
         //Hfs
-        if (Hfsplus::doMount(devicePath, mountPoint, false, false, AID_MEDIA_RW, 
+        if (Hfsplus::doMount(devicePath, mountPoint, false, false, AID_MEDIA_RW,
                AID_MEDIA_RW, 0007, true)) {
-            if (isUdisk) {
+            if (isLoop) {
                 SLOGW("%s failed to mount via HFS+ (%s).",
                                 devicePath, strerror(errno));
                 //ISO9660
@@ -616,7 +631,6 @@ int Volume::doUnmount(const char *path, bool force) {
 
 int Volume::unmountVol(bool force, bool revert) {
     int i, rc;
-
     int flags = getFlags();
     bool providesAsec = (flags & VOL_PROVIDES_ASEC) != 0;
     bool isUdisk = strstr(getMountpoint(), "udisk") != NULL;
@@ -627,6 +641,9 @@ int Volume::unmountVol(bool force, bool revert) {
         return UNMOUNT_NOT_MOUNTED_ERR;
     }
 
+#ifdef HAS_VIRTUAL_CDROM
+    mVm->UnmountLoopIfNeed(this);
+#endif
     setState(Volume::State_Unmounting);
     usleep(1000 * 1000); // Give the framework some time to react
 
@@ -648,6 +665,7 @@ int Volume::unmountVol(bool force, bool revert) {
         SLOGE("Failed to unmount %s (%s)", getFuseMountpoint(), strerror(errno));
         goto fail_remount_secure;
     }
+
     if(isUdisk){
         char mountPoint[255];
         for (size_t i = 0; i < mCurrentlyMountedKdevs.size(); i++){
@@ -677,7 +695,6 @@ int Volume::unmountVol(bool force, bool revert) {
         revertDeviceInfo();
         SLOGI("Encrypted volume %s reverted successfully", getMountpoint());
     }
-
     setUuid(NULL);
     setUserLabel(NULL);
     setState(Volume::State_Idle);
@@ -738,6 +755,128 @@ int Volume::initializeMbr(const char *deviceNode) {
 
     return rc;
 }
+
+#ifdef HAS_VIRTUAL_CDROM
+
+bool Volume::isContainMountedLoop(Volume *vol){
+
+    if (getState() != Volume::State_Mounted || mLoopMapDir == NULL) {
+        return false;
+    }
+
+    const char *mountPoint = vol->getMountpoint();
+    if (mountPoint != NULL && mLoopMapDir == strstr(mLoopMapDir, mountPoint)) {
+        return true;
+    }
+
+    const char *fuseMountPoint = vol->getFuseMountpoint();
+    if (fuseMountPoint != NULL && mLoopMapDir == strstr(mLoopMapDir, fuseMountPoint)) {
+        return true;
+    }
+    return false;
+}
+
+int Volume::loopsetfd(const char * path)
+{
+    int fd,file_fd;
+
+    if ((fd = open(LOOP_DEV, O_RDWR)) < 0) {
+        SLOGE("Unable to open loop0 device (%s)",strerror(errno));
+        return -1;
+    }
+
+    if ((file_fd = open(path, O_RDWR)) < 0) {
+        SLOGE("Unable to open %s (%s)", path, strerror(errno));
+        close(fd);
+        return -1;
+    }
+
+    if (ioctl(fd, LOOP_SET_FD, file_fd) < 0) {
+        SLOGE("Error setting up loopback interface (%s)", strerror(errno));
+        close(file_fd);
+        close(fd);
+        return  -1;
+    }
+
+    close(fd);
+    close(file_fd);
+
+    SLOGD("loopsetfd (%s) ok\n", path);
+    return 0;
+}
+
+int Volume::loopclrfd()
+{
+    int fd;
+    int rc=0;
+
+    if ((fd = open(LOOP_DEV, O_RDWR)) < 0) {
+        SLOGE("Unable to open loop0 device (%s)",strerror(errno));
+        return -1;
+    }
+
+    if (ioctl(fd, LOOP_CLR_FD, 0) < 0) {
+        SLOGE("Error setting up loopback interface (%s)", strerror(errno));
+        rc = -1;
+    }
+    close(fd);
+
+    SLOGD("loopclrfd ok\n");
+    return rc;
+}
+
+int Volume::mountloop(const char *path) {
+    int rc = 0;
+
+    if (getState() == Volume::State_Mounted) {
+        SLOGW("loop file already mounted,please umount fist,then mount this file!");
+        return -1;
+    }
+
+    rc = loopsetfd(path);
+    if (rc<0) {
+        return rc;
+    }
+
+    setState(Volume::State_Idle);
+
+    if (smartMount(LOOP_DEV, 0)) {
+        loopclrfd();
+        SLOGW("Volume::loop mount mount failed");
+        rc = -1;
+    }else{
+        SLOGI("Volume::loop mount mounted ok");
+        setState(Volume::State_Mounted);
+        if (path == strstr(path, "/storage/external_storage")) {
+            char tmp[256] = {0};
+            strcat(tmp, "/storage");
+            strcat(tmp, path+strlen("/storage/external_storage"));
+            mLoopMapDir = strdup(tmp);
+        }else{
+            mLoopMapDir = strdup(path);
+	}
+    }
+    return rc;
+}
+
+int Volume::unmountloop(bool force) {
+    if (getState() != Volume::State_Mounted) {
+        SLOGW("no loop file mounted");
+        return -1;
+    }
+
+    if (doUnmount(getMountpoint(), force)) {
+        SLOGE("Failed to unmount %s (%s)", getMountpoint(), strerror(errno));
+        return -1;
+    }
+
+    setState(Volume::State_Idle);
+    loopclrfd();
+
+    free(mLoopMapDir);
+    return 0;
+}
+#endif
 
 /*
  * Use blkid to extract UUID and label from device, since it handles many

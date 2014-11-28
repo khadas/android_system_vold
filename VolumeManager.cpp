@@ -1454,6 +1454,38 @@ int VolumeManager::mountObb(const char *img, const char *key, int ownerGid) {
     return 0;
 }
 
+#ifdef HAS_VIRTUAL_CDROM
+int VolumeManager::mountloop(const char * path) {
+    Volume *v = lookupVolume("loop");
+
+    if (!v) {
+        errno = ENOENT;
+        return -1;
+    }
+
+    return v->mountloop(path);
+}
+
+int VolumeManager::unmountloop(bool force) {
+    Volume *v = lookupVolume("loop");
+
+    if (!v) {
+        errno = ENOENT;
+        return -1;
+    }
+
+    return v->unmountloop(force);
+}
+
+void VolumeManager::UnmountLoopIfNeed(Volume *v){
+    SLOGE("unmountVolume  loop");
+    Volume *loop = lookupVolume("loop");
+    if (loop != NULL && loop->isContainMountedLoop(v)) {
+        loop->unmountloop(true);
+    }
+}
+#endif
+
 int VolumeManager::mountVolume(const char *label) {
     Volume *v = lookupVolume(label);
 

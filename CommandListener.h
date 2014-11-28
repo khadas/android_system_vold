@@ -65,6 +65,14 @@ private:
         int runCommand(SocketClient *c, int argc, char ** argv);
     };
 
+#ifdef HAS_VIRTUAL_CDROM
+    class LoopCmd : public VoldCommand {
+    public:
+        LoopCmd();
+        virtual ~LoopCmd() {}
+        int runCommand(SocketClient *c, int argc, char ** argv);
+    };
+#endif
     class CryptfsCmd : public VoldCommand {
     public:
         CryptfsCmd();

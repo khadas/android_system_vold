@@ -137,6 +137,11 @@ public:
     static char *asecHash(const char *id, char *buffer, size_t len);
 
     Volume *lookupVolume(const char *label);
+#ifdef HAS_VIRTUAL_CDROM
+    int mountloop(const char * path);
+    int unmountloop(bool force);
+    void UnmountLoopIfNeed(Volume *v);
+#endif
     int getNumDirectVolumes(void);
     int getDirectVolumeList(struct volume_info *vol_list);
     int unmountAllAsecsInDir(const char *directory);
