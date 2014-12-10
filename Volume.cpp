@@ -854,7 +854,10 @@ int Volume::mountloop(const char *path) {
             mLoopMapDir = strdup(tmp);
         }else{
             mLoopMapDir = strdup(path);
-	}
+        }
+        char service[64];
+        snprintf(service, 64, "fuse_%s", getLabel());
+        property_set("ctl.start", service);
     }
     return rc;
 }
@@ -864,6 +867,10 @@ int Volume::unmountloop(bool force) {
         SLOGW("no loop file mounted");
         return -1;
     }
+
+    char service[64];
+    snprintf(service, 64, "fuse_%s", getLabel());
+    property_set("ctl.stop", service);
 
     if (doUnmount(getMountpoint(), force)) {
         SLOGE("Failed to unmount %s (%s)", getMountpoint(), strerror(errno));
