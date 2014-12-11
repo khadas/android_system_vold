@@ -55,6 +55,7 @@ protected:
     char* mLabel;
     char* mUuid;
     char* mUserLabel;
+    char* mFileSystem;
     VolumeManager *mVm;
     bool mDebug;
     int mPartIdx;
@@ -79,6 +80,7 @@ public:
     const char* getLabel() { return mLabel; }
     const char* getUuid() { return mUuid; }
     const char* getUserLabel() { return mUserLabel; }
+    const char* getFileSystem() { return mFileSystem; }
     int getState() { return mState; }
     int getFlags() { return mFlags; };
 
@@ -106,6 +108,7 @@ protected:
     void setUuid(const char* uuid);
     void setUserLabel(const char* userLabel);
     void setState(int state);
+    void setFileSystem(const char *fileSystem);
 
     virtual int getDeviceNodes(dev_t *devs, int max) = 0;
     virtual int updateDeviceInfo(char *new_path, int new_major, int new_minor) = 0;

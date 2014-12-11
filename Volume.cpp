@@ -124,6 +124,7 @@ Volume::Volume(VolumeManager *vm, const fstab_rec* rec, int flags) {
     mLabel = strdup(rec->label);
     mUuid = NULL;
     mUserLabel = NULL;
+    mFileSystem = NULL;
     mState = Volume::State_Init;
     mFlags = flags;
     mCurrentlyMountedKdevs.clear();
@@ -138,6 +139,7 @@ Volume::~Volume() {
     free(mLabel);
     free(mUuid);
     free(mUserLabel);
+    free(mFileSystem);
 }
 
 void Volume::setDebug(bool enable) {
@@ -201,6 +203,19 @@ void Volume::setUserLabel(const char* userLabel) {
 
     mVm->getBroadcaster()->sendBroadcast(ResponseCode::VolumeUserLabelChange,
             msg, false);
+}
+
+void Volume::setFileSystem(const char* fileSystem) {
+    if (mFileSystem) {
+        free(mFileSystem);
+    }
+
+    if (fileSystem) {
+        mFileSystem = strdup(fileSystem);
+    } else {
+        mFileSystem = NULL;
+    }
+
 }
 
 void Volume::setState(int state) {
@@ -440,12 +455,15 @@ int Volume::mountVol() {
 
         extractMetadata(devicePath);
 
-        if (providesAsec && mountAsecExternal() != 0) {
-            SLOGE("Failed to mount secure area (%s)", strerror(errno));
-            umount(getMountpoint());
-            setState(Volume::State_Idle);
-            return -1;
-        }
+        const char* fs = getFileSystem();
+        if (fs != NULL && (!strcmp(fs, "vfat") || !strcmp(fs, "ntfs"))) {
+            if (providesAsec && mountAsecExternal() != 0) {
+                SLOGE("Failed to mount secure area (%s)", strerror(errno));
+                umount(getMountpoint());
+                setState(Volume::State_Idle);
+                return -1;
+            }
+       }
 
         hasPartitionMounted = true;
         mCurrentlyMountedKdevs.add(i, deviceNodes[i]); 
@@ -520,6 +538,7 @@ int Volume::smartMount(const char *devicePath, int part){
             if (!isLoop)
                 return -1;
         }else{
+            setFileSystem("vfat");
             SLOGI("Successfully mount %s as VFAT", devicePath);
             return 0;
         }
@@ -533,6 +552,7 @@ int Volume::smartMount(const char *devicePath, int part){
             if (!isLoop)
                 return -1;
         }else{
+            setFileSystem("exfat");
             SLOGI("Successfully mount %s as EXFAT", devicePath);
             return 0;
         }
@@ -553,14 +573,21 @@ int Volume::smartMount(const char *devicePath, int part){
                     SLOGW("%s failed to mount via ISO9660(%s)", devicePath, strerror(errno));
                     return -1;
                 }else{
+                    setFileSystem("iso");
                     SLOGI("Successfully mount %s as ISO9660", devicePath);
+                    return 0;
                 }
             }else{
                 SLOGW("%s failed to mount via HFS(%s)", devicePath, strerror(errno));
                 return -1;
             }
+        } else {
+            SLOGI("Successfully mount %s as HFS", devicePath);
+            setFileSystem("hfs");
+            return 0;
         }
     }else{
+        setFileSystem("ntfs");
         SLOGI("Successfully mount %s as NTFS", devicePath);
     }
 
@@ -634,6 +661,11 @@ int Volume::unmountVol(bool force, bool revert) {
     int flags = getFlags();
     bool providesAsec = (flags & VOL_PROVIDES_ASEC) != 0;
     bool isUdisk = strstr(getMountpoint(), "udisk") != NULL;
+    const char *fs = getFileSystem();
+
+    if (fs != NULL && strcmp(fs, "vfat") != 0 && strcmp(fs, "ntfs") !=0) {
+        providesAsec = false;
+    }
 
     if (getState() != Volume::State_Mounted) {
         SLOGE("Volume %s unmount request when not mounted", getLabel());

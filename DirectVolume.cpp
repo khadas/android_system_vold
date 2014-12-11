@@ -366,6 +366,14 @@ void DirectVolume::handlePartitionRemoved(const char * /*devpath*/,
          */
 
         bool providesAsec = (getFlags() & VOL_PROVIDES_ASEC) != 0;
+        /*
+         * Asec now only support vfat and ntfs
+         */
+        const char* fs = getFileSystem();
+        if (fs != NULL && strcmp(fs, "vfat") != 0 && strcmp(fs, "ntfs") != 0) {
+            providesAsec = false;
+        }
+
         if (providesAsec && mVm->cleanupAsec(this, true)) {
             SLOGE("Failed to cleanup ASEC - unmount will probably fail!");
         }
