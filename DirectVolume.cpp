@@ -320,6 +320,7 @@ void DirectVolume::handleDiskRemoved(const char * /*devpath*/,
     int minor = atoi(evt->findParam("MINOR"));
     char msg[255];
     bool enabled;
+    int state;
 
     if (mVm->shareEnabled(getLabel(), "ums", &enabled) == 0 && enabled) {
         mVm->unshareVolume(getLabel(), "ums");
@@ -330,6 +331,56 @@ void DirectVolume::handleDiskRemoved(const char * /*devpath*/,
              getLabel(), getFuseMountpoint(), major, minor);
     mVm->getBroadcaster()->sendBroadcast(ResponseCode::VolumeDiskRemoved,
                                              msg, false);
+
+    /*
+     * some sdcard and udisk, they don`t have any partitions, we need umount and change status when
+     * disk remove uevent is received
+     */
+
+    state = getState();
+    if (state == Volume::State_Mounted || state == Volume::State_Shared) {
+        bool rmMountedDev = false;
+        for (size_t i = 0; i < mCurrentlyMountedKdevs.size(); i++) {
+            if ((dev_t) MKDEV(major, minor) == mCurrentlyMountedKdevs.valueAt(i)) {
+                rmMountedDev = true;
+                break;
+            }
+        }
+
+        if (rmMountedDev) {
+            /*
+             * Yikes, our mounted partition is going away!
+             */
+            bool providesAsec = (getFlags() & VOL_PROVIDES_ASEC) != 0;
+            /*
+             * Asec now only support vfat and ntfs
+             */
+            const char* fs = getFileSystem();
+            if (fs != NULL && strcmp(fs, "vfat") != 0 && strcmp(fs, "ntfs") != 0) {
+                providesAsec = false;
+            }
+            if (providesAsec && mVm->cleanupAsec(this, true)) {
+                SLOGE("Failed to cleanup ASEC - unmount will probably fail!");
+            }
+
+            if (Volume::unmountVol(true, false)) {
+                SLOGE("Failed to unmount volume on bad removal (%s)",
+                     strerror(errno));
+                // XXX: At this point we're screwed for now
+            } else {
+                SLOGD("Crisis averted");
+            }
+        } else if (state == Volume::State_Shared) {
+
+            if (mVm->unshareVolume(getLabel(), "ums")) {
+                SLOGE("Failed to unshare volume on bad removal (%s)",
+                    strerror(errno));
+            } else {
+                SLOGD("Crisis averted");
+            }
+        }
+    }
+
     setState(Volume::State_NoMedia);
 }
 
