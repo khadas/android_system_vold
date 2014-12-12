@@ -70,6 +70,7 @@ public:
 
 protected:
     int getDeviceNodes(dev_t *devs, int max);
+    int getDeviceNum(void);
     int updateDeviceInfo(char *new_path, int new_major, int new_minor);
     virtual void revertDeviceInfo(void);
     int isDecrypted() { return mIsDecrypted; }

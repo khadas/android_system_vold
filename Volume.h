@@ -111,6 +111,7 @@ protected:
     void setFileSystem(const char *fileSystem);
 
     virtual int getDeviceNodes(dev_t *devs, int max) = 0;
+    virtual int getDeviceNum(void) = 0;
     virtual int updateDeviceInfo(char *new_path, int new_major, int new_minor) = 0;
     virtual void revertDeviceInfo(void) = 0;
     virtual int isDecrypted(void) = 0;

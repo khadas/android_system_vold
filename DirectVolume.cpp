@@ -504,6 +504,18 @@ int DirectVolume::getDeviceNodes(dev_t *devs, int max) {
     return 1;
 }
 
+int DirectVolume::getDeviceNum(void) {
+    if (mPartIdx == -1 && mDiskNumParts > 0 ) {
+        int j = 0;
+        for (int i = 0; i < mDiskNumParts; i++) {
+            if (mPartMinors[i] > 0)
+                j++;
+        }
+        return j;
+    }
+    return 1;
+}
+
 /*
  * Called from base to update device info,
  * e.g. When setting up an dm-crypt mapping for the sd card.

@@ -437,7 +437,25 @@ int Volume::mountVol() {
     }
 
     bool hasPartitionMounted = false;
-    bool isUdisk = (strstr(getMountpoint(), "udisk") != NULL);
+
+    /* If a udisk have more than one partiton, we need mount them to
+     * /mnt/media_rw/udiskX/partX, since rootfs default readonly and cannot
+     * create any directory in /mnt/media_rw/udiskX, so mount tmpfs first
+     * /mnt/media_rw/udiskX
+     */
+    bool isUdisk = (strstr(getLabel(), "udisk") != NULL);
+    bool useTmpfsForUdisk = false;
+    if (isUdisk && n > 1) {
+        int ret;
+        ret = mount("tmpfs", getMountpoint(), "tmpfs",
+                MS_NOATIME | MS_NOSUID | MS_NODEV, "size=10m,mode=0771,uid=1023,gid=1023");
+        if (ret < 0) {
+            SLOGE("Failed to mount tmpfs on %s - panic", getMountpoint());
+            setState(Volume::State_Idle);
+            return -1;
+        }
+        useTmpfsForUdisk = true;
+    }
 
     for (i = 0; i < n; i++) {
         char devicePath[255];
@@ -478,6 +496,8 @@ int Volume::mountVol() {
 
         setState(Volume::State_Mounted);
         return 0;
+    }else if (useTmpfsForUdisk) {
+        umount(getMountpoint());
     }
 
     SLOGE("Volume %s found no suitable devices for mounting :(\n", getLabel());
@@ -491,6 +511,11 @@ int Volume::smartMount(const char *devicePath, int part){
     bool mayContainVfat = true;
     bool mayContainExfat = true;
     bool isLoop =((getLabel()!= NULL) && (0 == strcmp(getLabel(), "loop")))?true:false;
+    bool useSubDir = false;
+
+    if (strstr(getLabel(), "udisk") != NULL && getDeviceNum() > 1) {
+        useSubDir = true;
+    }
 
     if (!isLoop) {
         setState(Volume::State_Checking);
@@ -522,8 +547,7 @@ int Volume::smartMount(const char *devicePath, int part){
 
     errno = 0;
 
-    bool isUdisk = (strstr(getMountpoint(), "udisk") != NULL);
-    if (isUdisk) {
+    if (useSubDir) {
         sprintf(mountPoint, "%s/part%d", getMountpoint(), part);
         mkdir(mountPoint, 0755);
     }else{
@@ -536,7 +560,7 @@ int Volume::smartMount(const char *devicePath, int part){
               AID_MEDIA_RW, AID_MEDIA_RW, 0007, true)) {
             SLOGW("%s failed to mount via VFAT (%s)\n", devicePath, strerror(errno));
             if (!isLoop)
-                return -1;
+                goto mount_fail;
         }else{
             setFileSystem("vfat");
             SLOGI("Successfully mount %s as VFAT", devicePath);
@@ -550,7 +574,7 @@ int Volume::smartMount(const char *devicePath, int part){
               AID_MEDIA_RW, 0007, true)) {
             SLOGW("%s failed to mount via EXFAT (%s)", devicePath, strerror(errno));
             if (!isLoop)
-                return -1;
+                goto mount_fail;
         }else{
             setFileSystem("exfat");
             SLOGI("Successfully mount %s as EXFAT", devicePath);
@@ -571,7 +595,7 @@ int Volume::smartMount(const char *devicePath, int part){
                 //ISO9660
                 if (iso9660::doMount(devicePath, mountPoint, false, false, AID_MEDIA_RW, AID_MEDIA_RW, 0007, true)) {
                     SLOGW("%s failed to mount via ISO9660(%s)", devicePath, strerror(errno));
-                    return -1;
+                    goto mount_fail;
                 }else{
                     setFileSystem("iso");
                     SLOGI("Successfully mount %s as ISO9660", devicePath);
@@ -579,7 +603,7 @@ int Volume::smartMount(const char *devicePath, int part){
                 }
             }else{
                 SLOGW("%s failed to mount via HFS(%s)", devicePath, strerror(errno));
-                return -1;
+                goto mount_fail;
             }
         } else {
             SLOGI("Successfully mount %s as HFS", devicePath);
@@ -592,6 +616,11 @@ int Volume::smartMount(const char *devicePath, int part){
     }
 
     return 0;
+
+mount_fail:
+    if (useSubDir)
+        rmdir(mountPoint);
+    return -1;
 }
 
 int Volume::mountAsecExternal() {
@@ -661,6 +690,7 @@ int Volume::unmountVol(bool force, bool revert) {
     int flags = getFlags();
     bool providesAsec = (flags & VOL_PROVIDES_ASEC) != 0;
     bool isUdisk = strstr(getMountpoint(), "udisk") != NULL;
+    int devNum = getDeviceNum();
     const char *fs = getFileSystem();
 
     if (fs != NULL && strcmp(fs, "vfat") != 0 && strcmp(fs, "ntfs") !=0) {
@@ -698,9 +728,9 @@ int Volume::unmountVol(bool force, bool revert) {
         goto fail_remount_secure;
     }
 
-    if(isUdisk){
+    if (isUdisk && devNum > 1) {
         char mountPoint[255];
-        for (size_t i = 0; i < mCurrentlyMountedKdevs.size(); i++){
+        for (size_t i = 0; i < mCurrentlyMountedKdevs.size(); i++) {
             sprintf(mountPoint, "%s/part%d", getMountpoint(), mCurrentlyMountedKdevs.keyAt(i));
 
             /* Unmount the real udisk */
@@ -708,6 +738,7 @@ int Volume::unmountVol(bool force, bool revert) {
                 SLOGE("Failed to unmount %s (%s)", getMountpoint(), strerror(errno));
             }
         }
+        umount(getMountpoint());
     }else{
         /* Unmount the real sd card */
         if (doUnmount(getMountpoint(), force) != 0) {
