@@ -878,7 +878,6 @@ int Volume::mountloop(const char *path) {
         rc = -1;
     }else{
         SLOGI("Volume::loop mount mounted ok");
-        setState(Volume::State_Mounted);
         if (path == strstr(path, "/storage/external_storage")) {
             char tmp[256] = {0};
             strcat(tmp, "/storage");
@@ -890,6 +889,7 @@ int Volume::mountloop(const char *path) {
         char service[64];
         snprintf(service, 64, "fuse_%s", getLabel());
         property_set("ctl.start", service);
+        setState(Volume::State_Mounted);
     }
     return rc;
 }
@@ -909,8 +909,8 @@ int Volume::unmountloop(bool force) {
         return -1;
     }
 
-    setState(Volume::State_Idle);
     loopclrfd();
+    setState(Volume::State_Idle);
 
     free(mLoopMapDir);
     return 0;
