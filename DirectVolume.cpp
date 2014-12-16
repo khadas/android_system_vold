@@ -176,6 +176,12 @@ int DirectVolume::handleBlockEvent(NetlinkEvent *evt) {
                                                          msg, false);
                 }
             } else if (action == NetlinkEvent::NlActionRemove) {
+                /* if state is NoMedia, the event should send to next volume, which have
+                 * same device path filter confidition
+                 */
+                if (getState() == Volume::State_NoMedia) {
+                    return -1;
+                }
                 if (!strcmp(devtype, "disk")) {
                     handleDiskRemoved(dp, evt);
                 } else {
