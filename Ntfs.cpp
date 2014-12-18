@@ -42,15 +42,79 @@
 
 #define UNUSED __attribute__((unused))
 
-static char FSCK_NTFS_PATH[] = "/system/bin/fsck_ntfs";
-static char MKNTFS_PATH[] = "/system/bin/newfs_ntfs";
+#ifdef HAS_NTFS_3G
 static char NTFS_3G_PATH[] = "/system/bin/ntfs-3g";
+static char NTFSFIX_3G_PATH[] = "/system/bin/ntfsfix";
+static char MKNTFS_3G_PATH[] = "/system/bin/mkntfs";
+#endif /* HAS_NTFS_3G */
 
 extern "C" int mount(const char *, const char *, const char *, unsigned long, const void *);
 
 int Ntfs::check(const char *fsPath UNUSED) {
+#ifndef HAS_NTFS_3G
     SLOGW("Skipping NTFS check\n");
     return 0;
+#else
+    bool rw = true;
+    if (access(NTFSFIX_3G_PATH, X_OK)) {
+        SLOGW("Skipping fs checks\n");
+        return 0;
+    }
+
+    int pass = 1;
+    int rc = 0;
+    int status;
+    do {
+        const char *args[4];
+        args[0] = NTFSFIX_3G_PATH;
+        args[1] = "-n";
+        args[2] = fsPath;
+        args[3] = NULL;
+
+        rc = android_fork_execvp(3, (char **)args, &status, false, true);
+
+        if (rc != 0) {
+            SLOGE("NTFS check failed due to logwrap error");
+            errno = EIO;
+            return -1;
+        }
+
+        if (!WIFEXITED(status)) {
+            SLOGE("NTFS check did not exit properly");
+            errno = EIO;
+            return -1;
+        }
+
+        status = WEXITSTATUS(status);
+
+        switch (status) {
+            case 0:
+                SLOGI("NTFS check completed OK");
+                return 0;
+
+            case 2:
+                SLOGE("NTFS check failed (not a NTFS filesystem)");
+                errno = ENODATA;
+                return -1;
+
+            case 4:
+                if (pass++ <= 3) {
+                    SLOGW("NTFS modified - rechecking (pass %d)", pass);
+                    continue;
+                }
+                SLOGE("Failing check after too many rechecks");
+                errno = EIO;
+                return -1;
+
+            default:
+                SLOGE("NTFS check failed (unknown exit code %d)", rc);
+                errno = EIO;
+                return -1;
+        }
+    } while (0);
+
+    return 0;
+#endif
 }
 
 int Ntfs::doMount(const char *fsPath, const char *mountPoint,
@@ -118,7 +182,75 @@ int Ntfs::doMount(const char *fsPath, const char *mountPoint,
 }
 
 int Ntfs::format(const char *fsPath UNUSED, unsigned int numSectors UNUSED) {
+#ifndef HAS_NTFS_3G
     SLOGE("Skipping NTFS format\n");
     errno = EIO;
     return -1;
+#else
+    char * label = NULL;
+    int fd;
+    int argc;
+    const char *args[10];
+    int rc;
+    int status;
+
+    args[0] = MKNTFS_3G_PATH;
+    args[1] = "-f";
+
+    if (numSectors) {
+        char tmp[32];
+        snprintf(tmp, sizeof(tmp), "%u", numSectors);
+        const char *size = tmp;
+        args[2] = "-s";
+        args[3] = size;
+        if (label == NULL) {
+            args[4] = fsPath;
+            args[5] = NULL;
+            argc = 6;
+        } else {
+            args[4] = "-L";
+            args[5] = label;
+            args[6] = fsPath;
+            args[7] = NULL;
+            argc = 7;
+        }
+    } else {
+        if (label == NULL) {
+            args[2] = fsPath;
+            args[3] = NULL;
+            argc = 3;
+        } else {
+            args[2] = "-L";
+            args[3] = label;
+            args[4] = fsPath;
+            args[5] = NULL;
+            argc = 5;
+        }
+    }
+    rc = android_fork_execvp(argc, (char **)args, &status, false, true);
+
+    if (rc != 0) {
+        SLOGE("NTFS format failed due to logwrap error");
+        errno = EIO;
+        return -1;
+    }
+
+    if (!WIFEXITED(status)) {
+        SLOGE("NTFS format did not exit properly");
+        errno = EIO;
+        return -1;
+    }
+
+    status = WEXITSTATUS(status);
+
+    if (status == 0) {
+        SLOGI("NTFS formatted OK");
+    } else {
+        SLOGE("NTFS Format failed (unknown exit code %d)", rc);
+        errno = EIO;
+        return -1;
+    }
+    return 0;
+#endif
+
 }

@@ -510,6 +510,7 @@ int Volume::smartMount(const char *devicePath, int part){
     char mountPoint[255];
     bool mayContainVfat = true;
     bool mayContainExfat = true;
+    bool mayContainNtfs = true;
     bool isLoop =((getLabel()!= NULL) && (0 == strcmp(getLabel(), "loop")))?true:false;
     bool useSubDir = false;
 
@@ -527,10 +528,20 @@ int Volume::smartMount(const char *devicePath, int part){
                     if (errno == ENODATA) {
                         mayContainExfat = false;
                         SLOGW("%s does not contain an Exfat filesystem\n", devicePath);
+                        if (Ntfs::check(devicePath)) {
+                            if (errno == ENODATA) {
+                                mayContainNtfs = false;
+                                SLOGW("%s does not contain an NTFS filesystem\n", devicePath);
+                            }else{
+                                errno = EIO;
+                                /* For ntfs, if check fail, just try mount */
+                                SLOGE("%s failed NTFS checks (%s)", devicePath, strerror(errno));
+                            }
+                        }
                     }else{
                         errno = EIO;
                         /* Badness - abort the mount */
-                        SLOGE("%s failed FS checks (%s)", devicePath, strerror(errno));
+                        SLOGE("%s failed EXFAT checks (%s)", devicePath, strerror(errno));
                         setState(Volume::State_Idle);
                         return -1;
                     }
@@ -538,7 +549,7 @@ int Volume::smartMount(const char *devicePath, int part){
             }else{
                 errno = EIO;
                 /* Badness - abort the mount */
-                SLOGE("%s failed FS checks (%s)", devicePath, strerror(errno));
+                SLOGE("%s failed VFAT checks (%s)", devicePath, strerror(errno));
                 setState(Volume::State_Idle);
                 return -1;
             }
@@ -583,37 +594,43 @@ int Volume::smartMount(const char *devicePath, int part){
     }
 
     //Ntfs
-    if (Ntfs::doMount(devicePath, mountPoint, false, false, AID_MEDIA_RW,
-           AID_MEDIA_RW, 0007, true)) {
-        SLOGW("%s failed to mount via NTFS (%s).",devicePath, strerror(errno));
-        //Hfs
-        if (Hfsplus::doMount(devicePath, mountPoint, false, false, AID_MEDIA_RW,
+    if (mayContainNtfs) {
+        if (Ntfs::doMount(devicePath, mountPoint, false, false, AID_MEDIA_RW,
                AID_MEDIA_RW, 0007, true)) {
-            if (isLoop) {
-                SLOGW("%s failed to mount via HFS+ (%s).",
-                                devicePath, strerror(errno));
-                //ISO9660
-                if (iso9660::doMount(devicePath, mountPoint, false, false, AID_MEDIA_RW, AID_MEDIA_RW, 0007, true)) {
-                    SLOGW("%s failed to mount via ISO9660(%s)", devicePath, strerror(errno));
-                    goto mount_fail;
-                }else{
-                    setFileSystem("iso");
-                    SLOGI("Successfully mount %s as ISO9660", devicePath);
-                    return 0;
-                }
-            }else{
-                SLOGW("%s failed to mount via HFS(%s)", devicePath, strerror(errno));
+            SLOGW("%s failed to mount via NTFS (%s).",devicePath, strerror(errno));
+            if (!isLoop)
                 goto mount_fail;
-            }
-        } else {
-            SLOGI("Successfully mount %s as HFS", devicePath);
-            setFileSystem("hfs");
+        }else{
+            setFileSystem("ntfs");
+            SLOGI("Successfully mount %s as NTFS", devicePath);
             return 0;
         }
-    }else{
-        setFileSystem("ntfs");
-        SLOGI("Successfully mount %s as NTFS", devicePath);
     }
+
+    //Hfs
+    if (Hfsplus::doMount(devicePath, mountPoint, false, false, AID_MEDIA_RW,
+           AID_MEDIA_RW, 0007, true)) {
+        if (isLoop) {
+            SLOGW("%s failed to mount via HFS+ (%s).",
+                      devicePath, strerror(errno));
+            //ISO9660
+            if (iso9660::doMount(devicePath, mountPoint, false, false, AID_MEDIA_RW, AID_MEDIA_RW, 0007, true)) {
+                    SLOGW("%s failed to mount via ISO9660(%s)", devicePath, strerror(errno));
+                goto mount_fail;
+            }else{
+                setFileSystem("iso");
+                SLOGI("Successfully mount %s as ISO9660", devicePath);
+                return 0;
+            }
+        }else{
+            SLOGW("%s failed to mount via HFS(%s)", devicePath, strerror(errno));
+            goto mount_fail;
+        }
+   } else {
+        SLOGI("Successfully mount %s as HFS", devicePath);
+        setFileSystem("hfs");
+        return 0;
+   }
 
     return 0;
 
