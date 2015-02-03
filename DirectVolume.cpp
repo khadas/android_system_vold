@@ -81,6 +81,7 @@ DirectVolume::DirectVolume(VolumeManager *vm, const fstab_rec* rec, int flags) :
     mDiskNumParts = 0;
     mIsDecrypted = 0;
     mDevPath = NULL;
+    mSrMounted = false;
 
     if (strcmp(rec->mount_point, "auto") != 0) {
         ALOGE("Vold managed volumes must have auto mount point; ignoring %s",
@@ -132,6 +133,12 @@ void DirectVolume::handleVolumeUnshared() {
 
 int DirectVolume::handleBlockEvent(NetlinkEvent *evt) {
     const char *dp = evt->findParam("DEVPATH");
+    const char *devname = evt->findParam("DEVNAME");
+    bool srDisk = false;
+
+    if (!strncmp(devname, "sr", 2)) {
+        srDisk = true;
+    }
 
     /*In order to support multi udisk at same time, we allow same fiter condition for
       different Volume.
@@ -148,6 +155,12 @@ int DirectVolume::handleBlockEvent(NetlinkEvent *evt) {
             int action = evt->getAction();
             const char *devtype = evt->findParam("DEVTYPE");
 
+            if (srDisk && action == NetlinkEvent::NlActionChange) {
+                if (!mSrMounted) {
+                    action = NetlinkEvent::NlActionAdd;
+                }
+            }
+
             if (action == NetlinkEvent::NlActionAdd) {
                 int major = atoi(evt->findParam("MAJOR"));
                 int minor = atoi(evt->findParam("MINOR"));
@@ -162,6 +175,9 @@ int DirectVolume::handleBlockEvent(NetlinkEvent *evt) {
                 }
                 if (!strcmp(devtype, "disk")) {
                     handleDiskAdded(dp, evt);
+                    if (srDisk) {
+                        mSrMounted = true;
+                    }
                 } else {
                     handlePartitionAdded(dp, evt);
                 }
@@ -184,6 +200,9 @@ int DirectVolume::handleBlockEvent(NetlinkEvent *evt) {
                 }
                 if (!strcmp(devtype, "disk")) {
                     handleDiskRemoved(dp, evt);
+                    if (srDisk) {
+                        mSrMounted = false;
+                    }
                 } else {
                     handlePartitionRemoved(dp, evt);
                 }
@@ -232,7 +251,7 @@ void DirectVolume::handleDiskAdded(const char * /*devpath*/,
 #endif
         setState(Volume::State_Pending);
     }
-    if (strstr(mLabel, "udisk") != NULL) {
+    if (strstr(mLabel, "udisk") != NULL || strstr(mLabel, "sr") != NULL) {
         if (mDevPath != NULL) {
             SLOGE("Unexpected statue of mDevPath, this should be a bug!");
             free(mDevPath);

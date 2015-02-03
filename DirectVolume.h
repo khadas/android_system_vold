@@ -51,6 +51,7 @@ protected:
     int            mPendingPartCount;
     int            mIsDecrypted;
     char*          mDevPath;
+    int            mSrMounted;
 
 public:
     DirectVolume(VolumeManager *vm, const fstab_rec* rec, int flags);

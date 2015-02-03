@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
 #include <dirent.h>
@@ -353,6 +354,7 @@ int Volume::mountVol() {
 
     property_get("vold.decrypt", decrypt_state, "");
     property_get("vold.encrypt_progress", encrypt_progress, "");
+    SLOGD("mLabel = %s\n", mLabel);
 
     /* Don't try to mount the volumes if we have not yet entered the disk password
      * or are in the process of encrypting.
@@ -481,7 +483,7 @@ int Volume::mountVol() {
                 setState(Volume::State_Idle);
                 return -1;
             }
-       }
+        }
 
         hasPartitionMounted = true;
         mCurrentlyMountedKdevs.add(i, deviceNodes[i]); 
@@ -514,44 +516,63 @@ int Volume::smartMount(const char *devicePath, int part){
     bool isLoop =((getLabel()!= NULL) && (0 == strcmp(getLabel(), "loop")))?true:false;
     bool useSubDir = false;
 
+    // repeat count
+    int cnt = 0;
+
     if (strstr(getLabel(), "udisk") != NULL && getDeviceNum() > 1) {
         useSubDir = true;
     }
 
     if (!isLoop) {
         setState(Volume::State_Checking);
-        if (Fat::check(devicePath)) {
-            if (errno == ENODATA) {
-                mayContainVfat = false;
-                SLOGW("%s does not contain a FAT filesystem\n", devicePath);
-                if (Exfat::check(devicePath)) {
-                    if (errno == ENODATA) {
-                        mayContainExfat = false;
-                        SLOGW("%s does not contain an Exfat filesystem\n", devicePath);
-                        if (Ntfs::check(devicePath)) {
-                            if (errno == ENODATA) {
-                                mayContainNtfs = false;
-                                SLOGW("%s does not contain an NTFS filesystem\n", devicePath);
-                            }else{
-                                errno = EIO;
-                                /* For ntfs, if check fail, just try mount */
-                                SLOGE("%s failed NTFS checks (%s)", devicePath, strerror(errno));
+        while (true) {
+            mayContainVfat = true;
+            mayContainExfat = true;
+            mayContainNtfs = true;
+            if (Fat::check(devicePath)) {
+                if (errno == ENODATA) {
+                    mayContainVfat = false;
+                    SLOGW("%s does not contain a FAT filesystem\n", devicePath);
+                    if (Exfat::check(devicePath)) {
+                        if (errno == ENODATA) {
+                            mayContainExfat = false;
+                            SLOGW("%s does not contain an Exfat filesystem\n", devicePath);
+                            if (Ntfs::check(devicePath)) {
+                                if (errno == ENODATA) {
+                                    mayContainNtfs = false;
+                                    SLOGW("%s does not contain an NTFS filesystem\n", devicePath);
+                                } else {
+                                    errno = EIO;
+                                    /* For ntfs, if check fail, just try mount */
+                                    SLOGE("%s failed NTFS checks (%s)", devicePath, strerror(errno));
+                                }
+                            } else {
+                                break;
                             }
+                        } else {
+                            errno = EIO;
+                            /* Badness - abort the mount */
+                            SLOGE("%s failed EXFAT checks (%s)", devicePath, strerror(errno));
+                            setState(Volume::State_Idle);
+                            return -1;
                         }
-                    }else{
-                        errno = EIO;
-                        /* Badness - abort the mount */
-                        SLOGE("%s failed EXFAT checks (%s)", devicePath, strerror(errno));
-                        setState(Volume::State_Idle);
-                        return -1;
+                    } else {
+                        break;
                     }
+                }else {
+                    errno = EIO;
+                    /* Badness - abort the mount */
+                    SLOGE("%s failed VFAT checks (%s)", devicePath, strerror(errno));
+                    setState(Volume::State_Idle);
+                    return -1;
                 }
-            }else{
-                errno = EIO;
-                /* Badness - abort the mount */
-                SLOGE("%s failed VFAT checks (%s)", devicePath, strerror(errno));
-                setState(Volume::State_Idle);
-                return -1;
+            } else {
+                break;
+            }
+            // Repeat five times
+            sleep(2);
+            if (++cnt > 5) {
+                break;
             }
         }
     }
@@ -610,21 +631,16 @@ int Volume::smartMount(const char *devicePath, int part){
     //Hfs
     if (Hfsplus::doMount(devicePath, mountPoint, false, false, AID_MEDIA_RW,
            AID_MEDIA_RW, 0007, true)) {
-        if (isLoop) {
-            SLOGW("%s failed to mount via HFS+ (%s).",
-                      devicePath, strerror(errno));
-            //ISO9660
-            if (iso9660::doMount(devicePath, mountPoint, false, false, AID_MEDIA_RW, AID_MEDIA_RW, 0007, true)) {
-                    SLOGW("%s failed to mount via ISO9660(%s)", devicePath, strerror(errno));
-                goto mount_fail;
-            }else{
-                setFileSystem("iso");
-                SLOGI("Successfully mount %s as ISO9660", devicePath);
-                return 0;
-            }
-        }else{
-            SLOGW("%s failed to mount via HFS(%s)", devicePath, strerror(errno));
+        SLOGW("%s failed to mount via HFS+ (%s).",
+                  devicePath, strerror(errno));
+        //ISO9660
+        if (iso9660::doMount(devicePath, mountPoint, false, false, AID_MEDIA_RW, AID_MEDIA_RW, 0007, true)) {
+            SLOGW("%s failed to mount via ISO9660(%s)", devicePath, strerror(errno));
             goto mount_fail;
+        }else{
+            setFileSystem("iso");
+            SLOGI("Successfully mount %s as ISO9660", devicePath);
+            return 0;
         }
    } else {
         SLOGI("Successfully mount %s as HFS", devicePath);
@@ -632,7 +648,7 @@ int Volume::smartMount(const char *devicePath, int part){
         return 0;
    }
 
-    return 0;
+   return 0;
 
 mount_fail:
     if (useSubDir)
@@ -656,7 +672,8 @@ int Volume::mountAsecExternal() {
 
     if (fs_prepare_dir(secure_path, 0770, AID_MEDIA_RW, AID_MEDIA_RW) != 0) {
         SLOGW("fs_prepare_dir failed: %s", strerror(errno));
-        return -1;
+        //return -1;
+        return 0;
     }
 
     if (mount(secure_path, SEC_ASECDIR_EXT, "", MS_BIND, NULL)) {

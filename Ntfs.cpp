@@ -91,21 +91,10 @@ int Ntfs::check(const char *fsPath UNUSED) {
             case 0:
                 SLOGI("NTFS check completed OK");
                 return 0;
-
-            case 2:
+            case 1:
                 SLOGE("NTFS check failed (not a NTFS filesystem)");
                 errno = ENODATA;
                 return -1;
-
-            case 4:
-                if (pass++ <= 3) {
-                    SLOGW("NTFS modified - rechecking (pass %d)", pass);
-                    continue;
-                }
-                SLOGE("Failing check after too many rechecks");
-                errno = EIO;
-                return -1;
-
             default:
                 SLOGE("NTFS check failed (unknown exit code %d)", rc);
                 errno = EIO;
