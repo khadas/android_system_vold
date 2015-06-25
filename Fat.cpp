@@ -81,14 +81,13 @@ int Fat::check(const char *fsPath) {
         }
 
         status = WEXITSTATUS(status);
-
         switch(status) {
         case 0:
             SLOGI("FAT check completed OK");
             return 0;
 
         case 2:
-        case 8:
+        //case 8:
             SLOGE("FAT check failed (not a FAT filesystem)");
             errno = ENODATA;
             return -1;
@@ -102,6 +101,11 @@ int Fat::check(const char *fsPath) {
             SLOGE("Failing check after too many rechecks");
             errno = EIO;
             return -1;
+
+        case 8:
+            SLOGE("FAT check : do nothing !");
+            errno = EAGAIN;
+            return 0;
 
         default:
             SLOGE("FAT check failed (unknown exit code %d)", status);
