@@ -559,7 +559,24 @@ int Volume::smartMount(const char *devicePath, int part){
                     } else {
                         break;
                     }
-                }else {
+                } else if (errno == EAGAIN) {
+                    mayContainVfat = false;
+                    if (Exfat::check(devicePath)) {
+                        if (errno == ENODATA) {
+                            mayContainExfat = false;
+                            SLOGW("EAGAIN: %s does not contain an Exfat filesystem\n", devicePath);
+                        } else {
+                            errno = EIO;
+                            /* Badness - abort the mount */
+                            SLOGE("EAGAIN: %s failed EXFAT checks (%s)", devicePath, strerror(errno));
+                            setState(Volume::State_Idle);
+                            return -1;
+                        }
+                    } else {
+                    mayContainNtfs = false;
+                        break;
+                    }
+                } else {
                     errno = EIO;
                     /* Badness - abort the mount */
                     SLOGE("%s failed VFAT checks (%s)", devicePath, strerror(errno));

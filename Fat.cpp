@@ -103,9 +103,9 @@ int Fat::check(const char *fsPath) {
             return -1;
 
         case 8:
-            SLOGE("FAT check : do nothing !");
+            SLOGE("FAT check : Need check exFAT next !");
             errno = EAGAIN;
-            return 0;
+            return -1;
 
         default:
             SLOGE("FAT check failed (unknown exit code %d)", status);
