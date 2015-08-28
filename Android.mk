@@ -92,6 +92,12 @@ LOCAL_CFLAGS += -DHAS_NTFS_3G
 LOCAL_CFLAGS += -DHAS_EXFAT_FUSE
 LOCAL_CFLAGS += -DHAS_VIRTUAL_CDROM
 
+ifneq ($(TARGET_SUPPORT_DIG),false)
+common_shared_libraries += libdig
+LOCAL_CFLAGS += -DSUPPORT_DIG
+LOCAL_C_INCLUDES += vendor/amlogic/frameworks/services/data_integrity_guard
+endif
+
 ifeq ($(TARGET_HW_DISK_ENCRYPTION),true)
 LOCAL_C_INCLUDES += $(TARGET_CRYPTFS_HW_PATH)
 common_shared_libraries += libcryptfs_hw

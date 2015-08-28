@@ -37,6 +37,10 @@
 #include "DirectVolume.h"
 #include "cryptfs.h"
 
+#ifdef SUPPORT_DIG
+#include "DigManager.h"
+#endif
+
 static int process_config(VolumeManager *vm);
 static void coldboot(const char *path);
 
@@ -67,11 +71,21 @@ int main() {
         exit(1);
     };
 
+#ifdef SUPPORT_DIG
+    DigManager *dm;
+    if (!(dm = DigManager::Instance())) {
+        SLOGE("Unable to create DigManager");
+        exit(1);
+    };
+#endif
+
 
     cl = new CommandListener();
     vm->setBroadcaster((SocketListener *) cl);
     nm->setBroadcaster((SocketListener *) cl);
-
+#ifdef SUPPORT_DIG
+    dm->setBroadcaster((SocketListener *) cl);
+#endif
     if (vm->start()) {
         SLOGE("Unable to start VolumeManager (%s)", strerror(errno));
         exit(1);
@@ -85,6 +99,13 @@ int main() {
         SLOGE("Unable to start NetlinkManager (%s)", strerror(errno));
         exit(1);
     }
+
+#ifdef SUPPORT_DIG
+    if (dm->start()) {
+        SLOGE("Unable to start DigManager (%s)", strerror(errno));
+        exit(1);
+    }
+#endif
 
     coldboot("/sys/block");
 //    coldboot("/sys/class/switch");

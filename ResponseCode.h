@@ -66,6 +66,14 @@ public:
     static const int VolumeDiskRemoved             = 631;
     static const int VolumeBadRemoval              = 632;
 
+    //for dig
+    //data remount as read only by kernel
+    static const int DigReport_DataReadOnly        = 650;
+    //cannot mount data
+    static const int DigReport_DataCrash           = 651;
+    //system file change
+    static const int DigReport_SystemChanged       = 652;
+
     static int convertFromErrno();
 };
 #endif
