@@ -43,6 +43,7 @@
 
 static int process_config(VolumeManager *vm);
 static void coldboot(const char *path);
+static void set_media_poll_time(void);
 
 #define FSTAB_PREFIX "/fstab."
 struct fstab *fstab;
@@ -106,7 +107,7 @@ int main() {
         exit(1);
     }
 #endif
-
+    set_media_poll_time();
     coldboot("/sys/block");
 //    coldboot("/sys/class/switch");
 
@@ -125,6 +126,19 @@ int main() {
 
     SLOGI("Vold exiting");
     exit(0);
+}
+
+static void set_media_poll_time(void)
+{
+    int fd;
+    fd = open ("/sys/module/block/parameters/events_dfl_poll_msecs", O_WRONLY);
+        if (fd >= 0) {
+            write(fd, "2000", 4);
+            close (fd);
+        }else {
+            SLOGE("kernel not support media poll uevent!");
+        }
+        return;
 }
 
 static void do_coldboot(DIR *d, int lvl)
