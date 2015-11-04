@@ -90,22 +90,28 @@ status_t Check(const std::string& source) {
 
         switch(rc) {
         case 0:
-            SLOGI("Filesystem check completed OK");
+            SLOGI("FAT check completed OK");
             return 0;
 
         case 2:
-            SLOGE("Filesystem check failed (not a FAT filesystem)");
+        //case 8:
+            SLOGE("FAT check failed (not a FAT filesystem)");
             errno = ENODATA;
             return -1;
 
         case 4:
             if (pass++ <= 3) {
-                SLOGW("Filesystem modified - rechecking (pass %d)",
+                SLOGW("FAT modified - rechecking (pass %d)",
                         pass);
                 continue;
             }
             SLOGE("Failing check after too many rechecks");
             errno = EIO;
+            return -1;
+
+        case 8:
+            SLOGE("FAT check : Need check exFAT next !");
+            errno = EAGAIN;
             return -1;
 
         default:

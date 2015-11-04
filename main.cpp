@@ -39,8 +39,19 @@
 #include <dirent.h>
 #include <fs_mgr.h>
 
+#define LOG_TAG "Vold"
+
+#include "cutils/klog.h"
+#include "cutils/log.h"
+#include "cutils/properties.h"
+
+#ifdef SUPPORT_DIG
+#include "DigManager.h"
+#endif
+
 static int process_config(VolumeManager *vm);
 static void coldboot(const char *path);
+static void set_media_poll_time(void);
 static void parse_args(int argc, char** argv);
 
 struct fstab *fstab;
@@ -92,6 +103,14 @@ int main(int argc, char** argv) {
         exit(1);
     }
 
+#ifdef SUPPORT_DIG
+    DigManager *dm;
+    if (!(dm = DigManager::Instance())) {
+        SLOGE("Unable to create DigManager");
+        exit(1);
+    };
+#endif
+
     if (property_get_bool("vold.debug", false)) {
         vm->setDebug(true);
     }
@@ -100,7 +119,9 @@ int main(int argc, char** argv) {
     ccl = new CryptCommandListener();
     vm->setBroadcaster((SocketListener *) cl);
     nm->setBroadcaster((SocketListener *) cl);
-
+#ifdef SUPPORT_DIG
+    dm->setBroadcaster((SocketListener *) cl);
+#endif
     if (vm->start()) {
         PLOG(ERROR) << "Unable to start VolumeManager";
         exit(1);
@@ -115,6 +136,13 @@ int main(int argc, char** argv) {
         exit(1);
     }
 
+#ifdef SUPPORT_DIG
+    if (dm->start()) {
+        SLOGE("Unable to start DigManager (%s)", strerror(errno));
+        exit(1);
+    }
+#endif
+    set_media_poll_time();
     coldboot("/sys/block");
 //    coldboot("/sys/class/switch");
 
@@ -138,6 +166,19 @@ int main(int argc, char** argv) {
 
     LOG(ERROR) << "Vold exiting";
     exit(0);
+}
+
+static void set_media_poll_time(void)
+{
+    int fd;
+    fd = open ("/sys/module/block/parameters/events_dfl_poll_msecs", O_WRONLY);
+        if (fd >= 0) {
+            write(fd, "2000", 4);
+            close (fd);
+        }else {
+            SLOGE("kernel not support media poll uevent!");
+        }
+        return;
 }
 
 static void parse_args(int argc, char** argv) {

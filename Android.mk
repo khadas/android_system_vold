@@ -8,6 +8,10 @@ common_src_files := \
 	NetlinkManager.cpp \
 	NetlinkHandler.cpp \
 	Process.cpp \
+	fs/Ntfs.cpp \
+	fs/Exfat.cpp \
+	fs/Hfsplus.cpp \
+	fs/Iso9660.cpp \
 	fs/Ext4.cpp \
 	fs/F2fs.cpp \
 	fs/Vfat.cpp \
@@ -74,7 +78,10 @@ LOCAL_C_INCLUDES := $(common_c_includes)
 LOCAL_SHARED_LIBRARIES := $(common_shared_libraries)
 LOCAL_STATIC_LIBRARIES := $(common_static_libraries)
 LOCAL_MODULE_TAGS := eng tests
-LOCAL_CFLAGS := $(vold_cflags)
+LOCAL_CFLAGS += -DHAS_NTFS_3G
+LOCAL_CFLAGS += -DHAS_EXFAT_FUSE
+LOCAL_CFLAGS += -DHAS_VIRTUAL_CDROM
+LOCAL_CFLAGS += $(vold_cflags)
 LOCAL_CONLYFLAGS := $(vold_conlyflags)
 
 include $(BUILD_STATIC_LIBRARY)
@@ -89,7 +96,18 @@ LOCAL_SRC_FILES := \
 	$(common_src_files)
 
 LOCAL_C_INCLUDES := $(common_c_includes)
-LOCAL_CFLAGS := $(vold_cflags)
+
+LOCAL_CFLAGS := -Werror=format
+LOCAL_CFLAGS += -DHAS_NTFS_3G
+LOCAL_CFLAGS += -DHAS_EXFAT_FUSE
+LOCAL_CFLAGS += -DHAS_VIRTUAL_CDROM
+
+ifneq ($(TARGET_SUPPORT_DIG),false)
+common_shared_libraries += libdig
+LOCAL_CFLAGS += -DSUPPORT_DIG
+LOCAL_C_INCLUDES += vendor/amlogic/frameworks/services/data_integrity_guard
+endif
+LOCAL_CFLAGS += $(vold_cflags)
 LOCAL_CONLYFLAGS := $(vold_conlyflags)
 
 ifeq ($(TARGET_HW_DISK_ENCRYPTION),true)
