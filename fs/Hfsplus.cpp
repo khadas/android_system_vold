@@ -37,17 +37,27 @@
 #include <cutils/log.h>
 #include <cutils/properties.h>
 #include <logwrap/logwrap.h>
+#include <base/stringprintf.h>
+#include <base/logging.h>
+
 #include "Hfsplus.h"
 
 #define UNUSED __attribute__((unused))
 
 static char FSCK_HFSPLUS_PATH[] = "/system/bin/fsck_hfsplus";
-extern "C" int mount(const char *, const char *, const char *, unsigned long, const void *);
 
-int Hfsplus::check(const char *fsPath) {
+extern "C" int mount(
+    const char *, const char *, const char *,
+    unsigned long, const void *);
+
+namespace android {
+namespace vold {
+namespace hfsplus {
+
+int Check(const char *fsPath) {
     bool rw = true;
     if (access(FSCK_HFSPLUS_PATH, X_OK)) {
-        SLOGW("Skipping fs checks\n");
+        LOG(WARNING) << "skipping hfsplus check";
         return 0;
     }
 
@@ -63,45 +73,41 @@ int Hfsplus::check(const char *fsPath) {
         args[3] = fsPath;
         args[4] = NULL;
 
-        rc = android_fork_execvp(4, (char **)args, &status, false,
-                true);
-
+        rc = android_fork_execvp(4, (char **)args, &status, false, true);
         if (rc != 0) {
-            SLOGE("HFS+ format failed due to logwrap error");
+            LOG(ERROR) << "hfsplus check failed due to logwrap error";
             errno = EIO;
             return -1;
         }
 
         if (!WIFEXITED(status)) {
-            SLOGE("HFS+ format did not exit properly");
+            LOG(ERROR) << "hfsplus chedk did not exit properly";
             errno = EIO;
             return -1;
         }
 
         status = WEXITSTATUS(status);
-
         switch(status) {
         case 0:
-            SLOGI("HFS+ check completed OK");
+            LOG(INFO) << "hfsplus check completed ok";
             return 0;
 
         case 8:
-            SLOGE("HFS+ check failed (not a HFS+ filesystem)");
+            LOG(ERROR) << "hfsplus check failed (not hfsplus filesystem)";
             errno = ENODATA;
             return -1;
 
         case 4:
             if (pass++ <= 3) {
-                SLOGW("HFS+ modified - rechecking (pass %d)",
-                        pass);
+                LOG(INFO) << "hfsplus modified - rechecking pass " << pass;
                 continue;
             }
-            SLOGE("Failing check after too many rechecks");
+            LOG(ERROR) << "failed check hfsplus after too many rechecks";
             errno = EIO;
             return -1;
 
         default:
-            SLOGE("HFS+ check failed (unknown exit code %d)", rc);
+            LOG(ERROR) << "hfsplus check failed.unknown exit code " << rc;
             errno = EIO;
             return -1;
         }
@@ -110,7 +116,7 @@ int Hfsplus::check(const char *fsPath) {
     return 0;
 }
 
-int Hfsplus::doMount(const char *fsPath, const char *mountPoint,
+int Mount(const char *fsPath, const char *mountPoint,
                  bool ro, bool remount, int ownerUid, int ownerGid,
                  int permMask UNUSED, bool createLost UNUSED) {
     int rc;
@@ -118,20 +124,16 @@ int Hfsplus::doMount(const char *fsPath, const char *mountPoint,
     char mountData[255];
 
     flags = MS_NODEV | MS_NOEXEC | MS_NOSUID | MS_DIRSYNC;
-
     flags |= (ro ? MS_RDONLY : 0);
     flags |= (remount ? MS_REMOUNT : 0);
 
     permMask = 0;
-
-    sprintf(mountData,
-            "nls=utf8,uid=%d,gid=%d",
-            ownerUid, ownerGid);
+    sprintf(mountData, "nls=utf8,uid=%d,gid=%d", ownerUid, ownerGid);
 
     rc = mount(fsPath, mountPoint, "hfsplus", flags, mountData);
-
     if (rc && errno == EROFS) {
-        SLOGE("%s appears to be a read only filesystem - retrying mount RO", fsPath);
+        LOG(ERROR) << fsPath <<
+            " appears to be a read only filesystem - retrying mount ro";
         flags |= MS_RDONLY;
         rc = mount(fsPath, mountPoint, "hfsplus", flags, mountData);
     }
@@ -139,8 +141,12 @@ int Hfsplus::doMount(const char *fsPath, const char *mountPoint,
     return rc;
 }
 
-int Hfsplus::format(const char *fsPath UNUSED, unsigned int numSectors UNUSED) {
-    SLOGE("Skipping hfs+ format\n");
+int Format(const char *fsPath UNUSED, unsigned int numSectors UNUSED) {
+    LOG(WARNING) << "skipping hfsplus format";
     errno = EIO;
     return -1;
 }
+
+}  // namespace hfsplus
+}  // namespace vold
+}  // namespace android

@@ -545,5 +545,94 @@ std::string DefaultFstabPath() {
     return StringPrintf("/fstab.%s", hardware);
 }
 
+static status_t readBlockDevMajorAndMinor(
+    const std::string& devPath,
+    std::string& major, std::string& minor) {
+    major.clear();
+    minor.clear();
+
+    std::vector<std::string> cmd;
+    cmd.push_back("/system/bin/ls");
+    cmd.push_back("-l");
+    cmd.push_back(devPath);
+
+    std::vector<std::string> output;
+    status_t res = ForkExecvp(cmd, output);
+    if (res != OK) {
+        LOG(WARNING) << "failed to identify ls -l " << devPath;
+        return res;
+    }
+
+    // Extract values from output
+    // brw------- root     root     179,   1 2015-01-01 00:00 mmcblk0p1
+    char value[128];
+    for (auto line : output) {
+        int count = sscanf(line.c_str(), "%3s", value);
+        if (count == 1 && !strcmp(value, "brw")) {              // block device
+            char f[128], s[128];
+            if (sscanf(line.c_str(), "%[^','],%s", f, s) == 2) { // split ','
+                minor = s;
+                char *cline = strdup(f);
+                char *str = strtok(cline, " ");
+                char buf[25];
+                while (str != nullptr) {
+                    if (sscanf(str, "%[1-9]", buf) == 1) {
+                        major = buf;
+                    }
+                    str = strtok(nullptr, " ");
+                }
+            }
+        }
+    }
+
+    return OK;
+}
+
+// /sys//devices/d0072000.sd/mmc_host/sd/sd:0007/block/mmcblk0
+// /sys//devices/dwc2_b/usb1/1-1/1-1.2/1-1.2:1.0/host0/target0:0:0/0:0:0:0/block/sda
+status_t GetLogicalPartitionDevice(
+    const dev_t device, const std::string& sysPath, std::string& logicalPartitionDev) {
+    std::string physicalDev;
+    const unsigned int kMajorBlockMmc = 179;
+    const unsigned int kMaxNumOfPartition = 20;
+
+    // logical partition dev's major & minor
+    unsigned int devMajor = major(device);
+    unsigned int devMinor = minor(device);
+
+    int iPos = sysPath.find("/block/");
+    if (iPos < 0) {
+        LOG(WARNING) << "can't find \"/block/\" in " << sysPath;
+        return -1;
+    }
+
+    physicalDev = StringPrintf("/dev/block/%s", sysPath.substr(iPos + 7).c_str());
+    LOG(INFO) << "physical dev: " << physicalDev <<
+        ", logical partition dev's major: " << devMajor << ", minor: " << devMinor;
+
+    // For now, assume that MMC devices are SD, and that
+    // everything else is USB
+    std::string lpDev;
+    std::string major, minor;
+    for (unsigned int i = 1; i <= kMaxNumOfPartition; i ++) {
+        if (devMajor == kMajorBlockMmc) {   // SD
+            lpDev =  StringPrintf("%sp%d", physicalDev.c_str(), i);
+        } else {    // USB
+            lpDev =  StringPrintf("%s%d", physicalDev.c_str(), i);
+        }
+
+        if (!access(lpDev.c_str(), F_OK) &&
+            readBlockDevMajorAndMinor(lpDev, major, minor) == OK &&
+            (int)devMajor == atoi(major.c_str()) &&
+            (int)devMinor == atoi(minor.c_str())) {
+            logicalPartitionDev = lpDev;
+            LOG(INFO) << "find logical partition dev: " << logicalPartitionDev;
+            break;
+        }
+    }
+
+    return OK;
+}
+
 }  // namespace vold
 }  // namespace android

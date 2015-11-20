@@ -14,18 +14,24 @@
  * limitations under the License.
  */
 
-#ifndef _ISO9660_H
-#define _ISO9660_H
+#ifndef ANDROID_VOLD_ISO9660_H
+#define ANDROID_VOLD_ISO9660_H
 
 #include <unistd.h>
+#include <string>
 
-class iso9660 {
-public:
-    static int check(const char *fsPath);
-    static int doMount(const char *fsPath, const char *mountPoint, bool ro,
-                       bool remount, int ownerUid, int ownerGid, int permMask,
-                       bool createLost);
-    static int format(const char *fsPath, unsigned int numSectors);
-};
+namespace android {
+namespace vold {
+namespace iso9660 {
+
+int Check(const char *fsPath);
+int Mount(const char *fsPath, const char *mountPoint, bool ro,
+               bool remount, int ownerUid, int ownerGid, int permMask,
+               bool createLost);
+int format(const char *fsPath, unsigned int numSectors);
+
+}  // namespace iso9660
+}  // namespace vold
+}  // namespace android
 
 #endif

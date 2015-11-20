@@ -82,6 +82,7 @@ public:
     userid_t getMountUserId() { return mMountUserId; }
     State getState() { return mState; }
     const std::string& getPath() { return mPath; }
+    const std::string& getSysPath() { return mSysPath; }
     const std::string& getInternalPath() { return mInternalPath; }
 
     status_t setDiskId(const std::string& diskId);
@@ -89,6 +90,7 @@ public:
     status_t setMountFlags(int mountFlags);
     status_t setMountUserId(userid_t mountUserId);
     status_t setSilent(bool silent);
+    void setSysPath(const std::string& sysPath) { mSysPath = sysPath; }
 
     void addVolume(const std::shared_ptr<VolumeBase>& volume);
     void removeVolume(const std::shared_ptr<VolumeBase>& volume);
@@ -136,6 +138,8 @@ private:
     State mState;
     /* Path to mounted volume */
     std::string mPath;
+    /* Device path under sysfs */
+    std::string mSysPath;
     /* Path to internal backing storage */
     std::string mInternalPath;
     /* Flag indicating that volume should emit no events */

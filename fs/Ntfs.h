@@ -14,18 +14,25 @@
  * limitations under the License.
  */
 
-#ifndef _NTFS_H
-#define _NTFS_H
+#ifndef ANDROID_VOLD_NTFS_H
+#define ANDROID_VOLD_NTFS_H
 
+#include <utils/Errors.h>
 #include <unistd.h>
+#include <string>
 
-class Ntfs {
-public:
-    static int check(const char *fsPath);
-    static int doMount(const char *fsPath, const char *mountPoint, bool ro,
-                       bool remount, int ownerUid, int ownerGid, int permMask,
-                       bool createLost);
-    static int format(const char *fsPath, unsigned int numSectors);
-};
+namespace android {
+namespace vold {
+namespace ntfs {
+
+int Check(const char *fsPath);
+int Mount(const char *fsPath, const char *mountPoint, bool ro,
+        bool remount, int ownerUid, int ownerGid, int permMask,
+        bool createLost);
+int Format(const char *fsPath, unsigned int numSectors);
+
+}  // namespace ntfs
+}  // namespace vold
+}  // namespace android
 
 #endif

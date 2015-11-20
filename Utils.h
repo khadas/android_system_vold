@@ -94,6 +94,12 @@ dev_t GetDevice(const std::string& path);
 
 std::string DefaultFstabPath();
 
+/* Get logical partition device,such as /dev/block/mmcblk1p1 */
+status_t GetLogicalPartitionDevice(
+    const dev_t device,
+    const std::string& sysPath,
+    std::string& logicalPartitionDev);
+
 }  // namespace vold
 }  // namespace android
 

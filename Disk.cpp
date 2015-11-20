@@ -144,6 +144,7 @@ void Disk::createPublicVolume(dev_t device) {
 
     mVolumes.push_back(vol);
     vol->setDiskId(getId());
+    vol->setSysPath(getSysPath());
     vol->create();
 }
 
@@ -298,7 +299,13 @@ status_t Disk::readPartitions() {
                 case 0x0b: // W95 FAT32 (LBA)
                 case 0x0c: // W95 FAT32 (LBA)
                 case 0x0e: // W95 FAT16 (LBA)
+
+                case 0x07: // NTFS & EXFAT
                     createPublicVolume(partDevice);
+                    break;
+
+                default:
+                    LOG(WARNING) << "unsupported table kMbr type " << type;
                     break;
                 }
             } else if (table == Table::kGpt) {

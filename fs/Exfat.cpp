@@ -36,6 +36,9 @@
 #include <cutils/log.h>
 #include <cutils/properties.h>
 #include <logwrap/logwrap.h>
+#include <base/stringprintf.h>
+#include <base/logging.h>
+
 #include "Exfat.h"
 
 #define UNUSED __attribute__((unused))
@@ -44,12 +47,18 @@ static char FSCK_EXFAT_PATH[] = "/system/bin/fsck.exfat";
 static char MKEXFAT_PATH[] = "/system/bin/mkfs.exfat";
 static char MOUNT_EXFAT_PATH[] = "/system/bin/mount.exfat";
 
-extern "C" int mount(const char *, const char *, const char *, unsigned long, const void *);
+extern "C" int mount(
+    const char *, const char *, const char *,
+    unsigned long, const void *);
 
-int Exfat::check(const char *fsPath) {
+namespace android {
+namespace vold {
+namespace exfat {
+
+int Check(const char *fsPath) {
     bool rw = true;
     if (access(FSCK_EXFAT_PATH, X_OK)) {
-        SLOGW("Skipping exFAT checks\n");
+        LOG(WARNING) << "skipping exfat check";
         return 0;
     }
 
@@ -62,34 +71,32 @@ int Exfat::check(const char *fsPath) {
         args[1] = fsPath;
         args[2] = NULL;
 
-        rc = android_fork_execvp(2, (char **)args, &status,
-                false, true);
+        rc = android_fork_execvp(2, (char **)args, &status, false, true);
         if (rc != 0) {
-            SLOGE("exFAT check failed due to logwrap error");
+            LOG(ERROR) << "exfat check failed due to logwrap error";
             errno = EIO;
             return -1;
         }
 
         if (!WIFEXITED(status)) {
-            SLOGE("exFAT check did not exit properly");
+            LOG(ERROR) << "exfat check did not exit properly";
             errno = EIO;
             return -1;
         }
 
         status = WEXITSTATUS(status);
-
         switch(status) {
         case 0:
-            SLOGI("exFAT check completed OK");
+            LOG(INFO) << "exfat check completed ok";
             return 0;
 
         case 2:
-            SLOGE("exFAT check failed (not a EXFAT filesystem)");
+            LOG(ERROR) << "exfat check failed (not exfat filesystem)";
             errno = ENODATA;
             return -1;
 
         default:
-            SLOGE("exFAT check failed (unknown exit code %d)", rc);
+            LOG(ERROR) << "exfat check failed.unknown exit code " << rc;
             errno = EIO;
             return -1;
         }
@@ -98,28 +105,28 @@ int Exfat::check(const char *fsPath) {
     return 0;
 }
 
-int Exfat::doMount(const char *fsPath, const char *mountPoint,
-                 bool ro UNUSED, bool remount UNUSED, int ownerUid UNUSED, int ownerGid UNUSED,
-                 int permMask UNUSED, bool createLost UNUSED) {
+int Mount(const char *fsPath, const char *mountPoint,
+                 bool ro UNUSED, bool remount UNUSED, int ownerUid UNUSED,
+                 int ownerGid UNUSED, int permMask UNUSED, bool createLost UNUSED) {
 #ifdef HAS_EXFAT_FUSE
     int rc;
     int status;
     do {
         const char *args[4];
-
         args[0] = MOUNT_EXFAT_PATH;
         args[1] = fsPath;
         args[2] = mountPoint;
         args[3] = NULL;
+
         rc = android_fork_execvp(3, (char **)args, &status, false, true);
         if (rc != 0) {
-            SLOGE("exFAT mount failed due to logwrap error");
+            LOG(ERROR) << "exfat mount failed due to logwrap error";
             errno = EIO;
             return -1;
         }
 
         if (!WIFEXITED(status)) {
-            SLOGE("exFAT mount did not exit properly");
+            LOG(ERROR) << "exfat mount did not exit properly";
             errno = EIO;
             return -1;
         }
@@ -127,34 +134,30 @@ int Exfat::doMount(const char *fsPath, const char *mountPoint,
         status = WEXITSTATUS(status);
         switch(status) {
         case 0:
-            SLOGI("exFAT mount OK");
-            return 0;
+            return 0;   // mount ok
 
         default:
-            SLOGE("exFAT mount failed (unknown exit code %d)", rc);
+            LOG(ERROR) << "exfat mount failed.unknown exit code " << rc;
             errno = EIO;
             return -1;
         }
     } while (0);
 #else
- 
     int rc;
     unsigned long flags;
     char mountData[255];
 
     flags = MS_NODEV | MS_NOEXEC | MS_NOSUID | MS_DIRSYNC;
-
     flags |= (ro ? MS_RDONLY : 0);
     flags |= (remount ? MS_REMOUNT : 0);
 
-    sprintf(mountData,
-            "uid=%d,gid=%d,fmask=%o,dmask=%o",
+    sprintf(mountData, "uid=%d,gid=%d,fmask=%o,dmask=%o",
             ownerUid, ownerGid, permMask, permMask);
 
     rc = mount(fsPath, mountPoint, "exfat", flags, mountData);
-
     if (rc && errno == EROFS) {
-        SLOGE("%s appears to be a read only filesystem - retrying mount RO", fsPath);
+        LOG(ERROR) << fsPath <<
+            " appears to be a read only filesystem - retry mount ro";
         flags |= MS_RDONLY;
         rc = mount(fsPath, mountPoint, "exfat", flags, mountData);
     }
@@ -162,7 +165,7 @@ int Exfat::doMount(const char *fsPath, const char *mountPoint,
     return rc;
 }
 
-int Exfat::format(const char *fsPath, unsigned int numSectors) {
+int Format(const char *fsPath, unsigned int numSectors) {
     const char *args[11];
     int rc;
     int status;
@@ -176,37 +179,36 @@ int Exfat::format(const char *fsPath, unsigned int numSectors) {
         args[2] = size;
         args[3] = fsPath;
         args[4] = NULL;
-
-        rc = android_fork_execvp(4, (char **)args, &status,
-                false, true);
+        rc = android_fork_execvp(4, (char **)args, &status, false, true);
     } else {
         args[7] = fsPath;
         args[8] = NULL;
-
-        rc = android_fork_execvp(8, (char **)args, &status,
-                false, true);
+        rc = android_fork_execvp(8, (char **)args, &status, false, true);
     }
 
     if (rc != 0) {
-        SLOGE("exFAT check failed due to logwrap error");
+        LOG(ERROR) << "exfat check failed due to logwrap error";
         errno = EIO;
         return -1;
     }
 
     if (!WIFEXITED(status)) {
-        SLOGE("exFAT check did not exit properly");
+        LOG(ERROR) << "exfat check did not exit properly";
         errno = EIO;
         return -1;
     }
 
     status = WEXITSTATUS(status);
-
     if (status == 0) {
-        SLOGI("exFAT formatted OK");
+        LOG(INFO) << "exfat format ok";
         return 0;
     } else {
-        SLOGE("Format exFAT failed (unknown exit code %d)", rc);
+        LOG(ERROR) << "exfat format failed.unknown exit code " << rc;
         errno = EIO;
         return -1;
     }
 }
+
+}  // namespace exfat
+}  // namespace vold
+}  // namespace android

@@ -35,18 +35,27 @@
 
 #include <cutils/log.h>
 #include <cutils/properties.h>
+#include <base/stringprintf.h>
+#include <base/logging.h>
 
 #include "Iso9660.h"
 
 #define UNUSED __attribute__((unused))
-extern "C" int mount(const char *, const char *, const char *, unsigned long, const void *);
 
-int iso9660::check(const char *fsPath UNUSED) {
-    SLOGW("Skipping ISO9660 check\n");
+extern "C" int mount(
+    const char *, const char *, const char *,
+    unsigned long, const void *);
+
+namespace android {
+namespace vold {
+namespace iso9660 {
+
+int Check(const char *fsPath UNUSED) {
+    LOG(WARNING) << "skipping iso9660 check";
     return 0;
 }
 
-int iso9660::doMount(const char *fsPath, const char *mountPoint,
+int Mount(const char *fsPath, const char *mountPoint,
                  bool ro UNUSED, bool remount, int ownerUid, int ownerGid,
                  int permMask UNUSED, bool createLost UNUSED) {
     int rc;
@@ -54,22 +63,25 @@ int iso9660::doMount(const char *fsPath, const char *mountPoint,
     char mountData[255];
 
     flags = MS_NODEV | MS_NOEXEC | MS_NOSUID | MS_DIRSYNC;
-
     flags |= MS_RDONLY;
     flags |= (remount ? MS_REMOUNT : 0);
 
-    sprintf(mountData,
-            "utf8,uid=%d,gid=%d",ownerUid, ownerGid);
+    sprintf(mountData, "utf8,uid=%d,gid=%d",ownerUid, ownerGid);
 
     rc = mount(fsPath, mountPoint, "iso9660", flags, mountData);
-
-    if (rc!=0)
+    if (rc !=0) {
         rc = mount(fsPath, mountPoint, "udf", flags, mountData);
+    }
+
     return rc;
 }
 
-int iso9660::format(const char *fsPath UNUSED, unsigned int numSectors UNUSED) {
-    SLOGE("Skipping ISO9660 format\n");
+int Format(const char *fsPath UNUSED, unsigned int numSectors UNUSED) {
+    LOG(WARNING) << "skipping iso9660 format";
     errno = EIO;
     return -1;
 }
+
+}  // namespace iso9660
+}  // namespace vold
+}  // namespace android

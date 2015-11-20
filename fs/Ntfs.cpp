@@ -37,6 +37,8 @@
 #include <cutils/log.h>
 #include <cutils/properties.h>
 #include <logwrap/logwrap.h>
+#include <base/stringprintf.h>
+#include <base/logging.h>
 
 #include "Ntfs.h"
 
@@ -48,16 +50,22 @@ static char NTFSFIX_3G_PATH[] = "/system/bin/ntfsfix";
 static char MKNTFS_3G_PATH[] = "/system/bin/mkntfs";
 #endif /* HAS_NTFS_3G */
 
-extern "C" int mount(const char *, const char *, const char *, unsigned long, const void *);
+extern "C" int mount(
+    const char *, const char *, const char *,
+    unsigned long, const void *);
 
-int Ntfs::check(const char *fsPath UNUSED) {
+namespace android {
+namespace vold {
+namespace ntfs {
+
+int Check(const char *fsPath UNUSED) {
 #ifndef HAS_NTFS_3G
-    SLOGW("Skipping NTFS check\n");
+    LOG(WARNING) << "skipping ntfs check";
     return 0;
 #else
     bool rw = true;
     if (access(NTFSFIX_3G_PATH, X_OK)) {
-        SLOGW("Skipping fs checks\n");
+        LOG(WARNING) << "skipping ntfs check";
         return 0;
     }
 
@@ -72,15 +80,14 @@ int Ntfs::check(const char *fsPath UNUSED) {
         args[3] = NULL;
 
         rc = android_fork_execvp(3, (char **)args, &status, false, true);
-
         if (rc != 0) {
-            SLOGE("NTFS check failed due to logwrap error");
+            LOG(ERROR) << "ntfs check failed due to logwrap error";
             errno = EIO;
             return -1;
         }
 
         if (!WIFEXITED(status)) {
-            SLOGE("NTFS check did not exit properly");
+            LOG(ERROR) << "ntfs check did not exit properly";
             errno = EIO;
             return -1;
         }
@@ -89,14 +96,14 @@ int Ntfs::check(const char *fsPath UNUSED) {
 
         switch (status) {
             case 0:
-                SLOGI("NTFS check completed OK");
+                LOG(INFO) << "ntfs check completed ok";
                 return 0;
             case 1:
-                SLOGE("NTFS check failed (not a NTFS filesystem)");
+                LOG(ERROR) << "ntfs check failed (not a ntfs filesystem)";
                 errno = ENODATA;
                 return -1;
             default:
-                SLOGE("NTFS check failed (unknown exit code %d)", rc);
+                LOG(ERROR) << "ntfs check failed.unknown exit code " << rc;
                 errno = EIO;
                 return -1;
         }
@@ -106,29 +113,26 @@ int Ntfs::check(const char *fsPath UNUSED) {
 #endif
 }
 
-int Ntfs::doMount(const char *fsPath, const char *mountPoint,
-                 bool ro UNUSED, bool remount UNUSED, int ownerUid, int ownerGid,
-                 int permMask, bool createLost UNUSED) {
+int Mount(const char *fsPath, const char *mountPoint,
+                 bool ro UNUSED, bool remount UNUSED, int ownerUid,
+                 int ownerGid, int permMask, bool createLost UNUSED) {
 #ifndef HAS_NTFS_3G
     int rc;
     unsigned long flags;
     char mountData[255];
 
     flags = MS_NODEV | MS_NOEXEC | MS_NOSUID | MS_DIRSYNC;
-
     flags |= (ro ? MS_RDONLY : 0);
     flags |= (remount ? MS_REMOUNT : 0);
 
     permMask = 0;
-
-    sprintf(mountData,
-            "nls=utf8,uid=%d,gid=%d,fmask=%o,dmask=%o",
+    sprintf(mountData, "nls=utf8,uid=%d,gid=%d,fmask=%o,dmask=%o",
             ownerUid, ownerGid, permMask, permMask);
 
     rc = mount(fsPath, mountPoint, "ntfs", flags, mountData);
-
     if (rc && errno == EROFS) {
-        SLOGE("%s appears to be a read only filesystem - retrying mount RO", fsPath);
+        LOG(ERROR) << fsPath <<
+            " appears to be a read only filesystem - retry mount ro");
         flags |= MS_RDONLY;
         rc = mount(fsPath, mountPoint, "ntfs", flags, mountData);
     }
@@ -140,8 +144,7 @@ int Ntfs::doMount(const char *fsPath, const char *mountPoint,
     const char *args[11];
     char mountData[255];
 
-    sprintf(mountData,
-            "locale=utf8,uid=%d,gid=%d,fmask=%o,dmask=%o",
+    sprintf(mountData, "locale=utf8,uid=%d,gid=%d,fmask=%o,dmask=%o",
             ownerUid, ownerGid, permMask, permMask);
 
     args[0] = NTFS_3G_PATH;
@@ -150,29 +153,28 @@ int Ntfs::doMount(const char *fsPath, const char *mountPoint,
     args[3] = "-o";
     args[4] = mountData;
     args[5] = NULL;
-    rc = android_fork_execvp(5, (char **)args, &status, false, true);
 
+    rc = android_fork_execvp(5, (char **)args, &status, false, true);
     if (rc != 0) {
-        SLOGE("NTFS check failed due to logwrap error");
+        LOG(ERROR) << "ntfs check failed due to logwrap error";
         errno = EIO;
         return -1;
     }
 
     if (!WIFEXITED(status)) {
-        SLOGE("NTFS check did not exit properly");
+        LOG(ERROR) << "ntfs check did not exit properly";
         errno = EIO;
         return -1;
     }
 
     status = WEXITSTATUS(status);
-
     return status;
 #endif /* HAS_NTFS_3G */
 }
 
-int Ntfs::format(const char *fsPath UNUSED, unsigned int numSectors UNUSED) {
+int Format(const char *fsPath UNUSED, unsigned int numSectors UNUSED) {
 #ifndef HAS_NTFS_3G
-    SLOGE("Skipping NTFS format\n");
+    LOG(WARNING) << "skipping ntfs format";
     errno = EIO;
     return -1;
 #else
@@ -216,30 +218,32 @@ int Ntfs::format(const char *fsPath UNUSED, unsigned int numSectors UNUSED) {
             argc = 5;
         }
     }
-    rc = android_fork_execvp(argc, (char **)args, &status, false, true);
 
+    rc = android_fork_execvp(argc, (char **)args, &status, false, true);
     if (rc != 0) {
-        SLOGE("NTFS format failed due to logwrap error");
+        LOG(ERROR) << "ntfs format failed due to logwrap error";
         errno = EIO;
         return -1;
     }
 
     if (!WIFEXITED(status)) {
-        SLOGE("NTFS format did not exit properly");
+        LOG(ERROR) << "ntfs format did not exit properly";
         errno = EIO;
         return -1;
     }
 
     status = WEXITSTATUS(status);
-
     if (status == 0) {
-        SLOGI("NTFS formatted OK");
+        LOG(INFO) << "ntfs formatted ok";
     } else {
-        SLOGE("NTFS Format failed (unknown exit code %d)", rc);
+        LOG(ERROR) << "ntfs Format failed.unknown exit code " << rc;
         errno = EIO;
         return -1;
     }
     return 0;
 #endif
-
 }
+
+}  // namespace ntfs
+}  // namespace vold
+}  // namespace android

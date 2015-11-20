@@ -15,6 +15,10 @@
  */
 
 #include "fs/Vfat.h"
+#include "fs/Ntfs.h"
+#include "fs/Exfat.h"
+#include "fs/Hfsplus.h"
+#include "fs/Iso9660.h"
 #include "PublicVolume.h"
 #include "Utils.h"
 #include "VolumeManager.h"
@@ -94,13 +98,28 @@ status_t PublicVolume::doMount() {
     // TODO: expand to support mounting other filesystems
     readMetadata();
 
-    if (mFsType != "vfat") {
+    if (mFsType != "vfat" &&
+        mFsType != "ntfs" &&
+        mFsType != "exfat" &&
+        mFsType != "hfs") {
         LOG(ERROR) << getId() << " unsupported filesystem " << mFsType;
         return -EIO;
     }
 
-    if (vfat::Check(mDevPath)) {
-        LOG(ERROR) << getId() << " failed filesystem check";
+    // Check filesystems
+    status_t checkStatus = -1;
+    if (mFsType == "vfat") {
+        checkStatus = vfat::Check(mDevPath);
+    } else if (mFsType == "ntfs") {
+        checkStatus = ntfs::Check(mDevPath.c_str());
+    } else if (mFsType == "exfat") {
+        checkStatus = exfat::Check(mDevPath.c_str());
+    } else if (mFsType == "hfs") {
+        checkStatus = hfsplus::Check(mDevPath.c_str());
+    }
+
+    if (checkStatus) {
+        LOG(ERROR) << getId() << " failed to check filesystem " << mFsType;
         return -EIO;
     }
 
@@ -131,8 +150,39 @@ status_t PublicVolume::doMount() {
         return -errno;
     }
 
-    if (vfat::Mount(mDevPath, mRawPath, false, false, false,
-            AID_MEDIA_RW, AID_MEDIA_RW, 0007, true)) {
+    // Mount device
+    status_t mountStatus = -1;
+    std::string logicPartDevPath;
+    if (mFsType == "ntfs" || mFsType == "exfat") {
+        if (GetLogicalPartitionDevice(mDevice, getSysPath(), logicPartDevPath) != OK) {
+            LOG(ERROR) << "failed to get logical partition device for fstype " << mFsType;
+            return -errno;
+        }
+    }
+
+    if (mFsType == "vfat") {
+        mountStatus = vfat::Mount(mDevPath, mRawPath, false, false, false,
+                            AID_MEDIA_RW, AID_MEDIA_RW, 0007, true);
+    } else if (mFsType == "ntfs") {
+        mountStatus = ntfs::Mount(logicPartDevPath.c_str(), mRawPath.c_str(), false, false,
+                            AID_MEDIA_RW, AID_MEDIA_RW, 0007, true);
+    } else if (mFsType == "exfat") {
+        mountStatus = exfat::Mount(logicPartDevPath.c_str(), mRawPath.c_str(), false, false,
+                            AID_MEDIA_RW, AID_MEDIA_RW, 0007, true);
+    } else if (mFsType == "hfs") {
+        if ((mountStatus = hfsplus::Mount(mDevPath.c_str(), mRawPath.c_str(), false, false,
+                            AID_MEDIA_RW, AID_MEDIA_RW, 0007, true)) != 0) {
+            LOG(ERROR) << mDevPath.c_str() << " failed to mount via hfs+";
+            if ((mountStatus = iso9660::Mount(mDevPath.c_str(), mRawPath.c_str(), false, false,
+                            AID_MEDIA_RW, AID_MEDIA_RW, 0007, true)) != 0) {
+                LOG(INFO) << mDevPath.c_str() << " failed to mount via iso9660";
+            } else {
+                LOG(INFO) << "successfully mount " << mDevPath.c_str() << " as iso9660";
+            }
+        }
+    }
+
+    if (mountStatus) {
         PLOG(ERROR) << getId() << " failed to mount " << mDevPath;
         return -EIO;
     }
