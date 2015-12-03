@@ -305,6 +305,10 @@ status_t Disk::readPartitions() {
                     break;
 
                 default:
+                    // We should still create public volume here
+                    // cause some disk table types are not matched above
+                    // but can be mounted successfully
+                    createPublicVolume(partDevice);
                     LOG(WARNING) << "unsupported table kMbr type " << type;
                     break;
                 }
