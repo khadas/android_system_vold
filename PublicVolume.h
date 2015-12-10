@@ -40,6 +40,7 @@ namespace vold {
 class PublicVolume : public VolumeBase {
 public:
     explicit PublicVolume(dev_t device);
+    explicit PublicVolume(const std::string& physicalDevName);
     virtual ~PublicVolume();
 
 protected:
@@ -73,6 +74,9 @@ private:
     std::string mFsUuid;
     /* User-visible filesystem label */
     std::string mFsLabel;
+
+    /* Just sd/udisk physical devices are used */
+    bool mJustPhysicalDev;
 
     DISALLOW_COPY_AND_ASSIGN(PublicVolume);
 };

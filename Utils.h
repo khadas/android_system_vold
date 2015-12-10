@@ -94,11 +94,21 @@ dev_t GetDevice(const std::string& path);
 
 std::string DefaultFstabPath();
 
+/* Get physical device,such as /dev/block/mmcblk1 */
+status_t GetPhysicalDevice(
+    const std::string& sysPath,
+    std::string& physicalDev);
+
 /* Get logical partition device,such as /dev/block/mmcblk1p1 */
 status_t GetLogicalPartitionDevice(
     const dev_t device,
     const std::string& sysPath,
     std::string& logicalPartitionDev);
+
+/* Check sd/udisk physical devices whether are used */
+bool IsJustPhysicalDevice(
+    const std::string& sysPath,
+    std::string& physicalDevName);
 
 }  // namespace vold
 }  // namespace android

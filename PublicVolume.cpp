@@ -46,9 +46,15 @@ static const char* kFusePath = "/system/bin/sdcard";
 static const char* kAsecPath = "/mnt/secure/asec";
 
 PublicVolume::PublicVolume(dev_t device) :
-        VolumeBase(Type::kPublic), mDevice(device), mFusePid(0) {
+        VolumeBase(Type::kPublic), mDevice(device), mFusePid(0), mJustPhysicalDev(false) {
     setId(StringPrintf("public:%u,%u", major(device), minor(device)));
     mDevPath = StringPrintf("/dev/block/vold/%s", getId().c_str());
+}
+
+PublicVolume::PublicVolume(const std::string& physicalDevName) :
+        VolumeBase(Type::kPublic), mFusePid(0), mJustPhysicalDev(true) {
+    setId(physicalDevName);
+    mDevPath = StringPrintf("/dev/block/%s", getId().c_str());
 }
 
 PublicVolume::~PublicVolume() {
@@ -87,10 +93,12 @@ status_t PublicVolume::initAsecStage() {
 }
 
 status_t PublicVolume::doCreate() {
+    if (mJustPhysicalDev) return 0;
     return CreateDeviceNode(mDevPath, mDevice);
 }
 
 status_t PublicVolume::doDestroy() {
+    if (mJustPhysicalDev) return 0;
     return DestroyDeviceNode(mDevPath);
 }
 
@@ -152,8 +160,9 @@ status_t PublicVolume::doMount() {
 
     // Mount device
     status_t mountStatus = -1;
-    std::string logicPartDevPath;
-    if (mFsType == "ntfs" || mFsType == "exfat") {
+    std::string logicPartDevPath = mDevPath;
+    if (!mJustPhysicalDev &&
+        (mFsType == "ntfs" || mFsType == "exfat")) {
         if (GetLogicalPartitionDevice(mDevice, getSysPath(), logicPartDevPath) != OK) {
             LOG(ERROR) << "failed to get logical partition device for fstype " << mFsType;
             return -errno;

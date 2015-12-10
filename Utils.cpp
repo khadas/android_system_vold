@@ -588,6 +588,24 @@ static status_t readBlockDevMajorAndMinor(
     return OK;
 }
 
+// Get physical device path (such as /dev/block/sda) by kernel event sys path
+status_t GetPhysicalDevice(
+    const std::string& sysPath, std::string& physicalDev) {
+    int iPos = sysPath.find("/block/");
+    if (iPos < 0) {
+        LOG(WARNING) << "can't find \"/block/\" in " << sysPath;
+        return -1;
+    }
+
+    physicalDev = StringPrintf("/dev/block/%s", sysPath.substr(iPos + 7).c_str());
+    if (access(physicalDev.c_str(), F_OK)) {
+        LOG(INFO) << "physical dev: " << physicalDev + " doesn't exist";
+        return -1;
+    }
+
+    return OK;
+}
+
 // /sys//devices/d0072000.sd/mmc_host/sd/sd:0007/block/mmcblk0
 // /sys//devices/dwc2_b/usb1/1-1/1-1.2/1-1.2:1.0/host0/target0:0:0/0:0:0:0/block/sda
 status_t GetLogicalPartitionDevice(
@@ -600,13 +618,10 @@ status_t GetLogicalPartitionDevice(
     unsigned int devMajor = major(device);
     unsigned int devMinor = minor(device);
 
-    int iPos = sysPath.find("/block/");
-    if (iPos < 0) {
-        LOG(WARNING) << "can't find \"/block/\" in " << sysPath;
+    if (GetPhysicalDevice(sysPath, physicalDev) != OK) {
         return -1;
     }
 
-    physicalDev = StringPrintf("/dev/block/%s", sysPath.substr(iPos + 7).c_str());
     LOG(INFO) << "physical dev: " << physicalDev <<
         ", logical partition dev's major: " << devMajor << ", minor: " << devMinor;
 
@@ -632,6 +647,60 @@ status_t GetLogicalPartitionDevice(
     }
 
     return OK;
+}
+
+// Such as /dev/block/sda is used, return true,otherwise false
+// just true,saved sda to physicalDevName
+bool IsJustPhysicalDevice(
+    const std::string& sysPath, std::string& physicalDevName) {
+    std::string major, minor;
+    std::string physicalDev;
+    std::string logicalPartitionDev;
+    const unsigned int kMajorBlockMmc = 179;
+
+    if (GetPhysicalDevice(sysPath, physicalDev) == OK) {
+        std::vector<std::string> cmd;
+        cmd.push_back(kBlkidPath);
+        cmd.push_back("-c");
+        cmd.push_back("/dev/null");
+        cmd.push_back("-s");
+        cmd.push_back("TYPE");
+        cmd.push_back("-s");
+        cmd.push_back("UUID");
+        cmd.push_back("-s");
+        cmd.push_back("LABEL");
+        cmd.push_back(physicalDev);
+
+        std::vector<std::string> output;
+        status_t res = ForkExecvp(cmd, output);
+        if (res != OK) {
+            LOG(WARNING) << "failed to identify blkid " << physicalDev;
+            return false;
+        }
+
+        char value[128];
+        for (auto line : output) {
+            // Extract values from blkid output, if defined
+            const char* cline = line.c_str();
+            if (!strncmp(cline, physicalDev.c_str(), strlen(physicalDev.c_str()))) {
+                if (readBlockDevMajorAndMinor(physicalDev, major, minor) == OK) {
+                    logicalPartitionDev = (atoi(major.c_str()) == kMajorBlockMmc) ?
+                        StringPrintf("%sp1", physicalDev.c_str()) :
+                        StringPrintf("%s1", physicalDev.c_str());
+                    if (access(logicalPartitionDev.c_str(), F_OK)) {
+                        // And logical partition device doesn't exist,
+                        // we're sure physical device is used.
+                        // length /dev/block/ = 11,such as sda or mmcblk0,
+                        // we get as physical device name.
+                        physicalDevName = StringPrintf("%s", physicalDev.substr(11).c_str());
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+
+    return false;
 }
 
 }  // namespace vold
