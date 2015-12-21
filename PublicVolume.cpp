@@ -255,6 +255,16 @@ status_t PublicVolume::doUnmount() {
         mFusePid = 0;
     }
 
+#ifdef HAS_VIRTUAL_CDROM
+    std::string stableName = getId();
+    if (!mFsUuid.empty()) {
+        stableName = mFsUuid;
+    }
+
+    VolumeManager *vm = VolumeManager::Instance();
+    vm->unmountLoopIfNeed(stableName.c_str());
+#endif
+
     ForceUnmount(kAsecPath);
 
     ForceUnmount(mFuseDefault);

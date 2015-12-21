@@ -57,6 +57,9 @@ CommandListener::CommandListener() :
     registerCmd(new AsecCmd());
     registerCmd(new ObbCmd());
     registerCmd(new StorageCmd());
+#ifdef HAS_VIRTUAL_CDROM
+    registerCmd(new LoopCmd());
+#endif
     registerCmd(new CryptfsCmd());
     registerCmd(new FstrimCmd());
 }
@@ -585,6 +588,55 @@ int CommandListener::ObbCmd::runCommand(SocketClient *cli,
 
     return 0;
 }
+
+#ifdef HAS_VIRTUAL_CDROM
+CommandListener::LoopCmd::LoopCmd() :
+                 VoldCommand("loop") {
+}
+
+int CommandListener::LoopCmd::runCommand(SocketClient *cli,
+                                                      int argc, char **argv) {
+    dumpArgs(argc, argv, -1);
+    if (argc < 2) {
+        cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing Argument", false);
+        return 0;
+    }
+
+    VolumeManager *vm = VolumeManager::Instance();
+    int rc = 0;
+    if (!strcmp(argv[1], "mount")) {
+        if (argc != 3) {
+            cli->sendMsg(ResponseCode::CommandSyntaxError, "Usage: loop mount <path>", false);
+            return 0;
+        }
+        rc = vm->mountloop(argv[2]);
+    } else if (!strcmp(argv[1], "unmount")) {
+        if (argc < 2 || argc > 3) {
+            cli->sendMsg(ResponseCode::CommandSyntaxError, "Usage: loop unmount [force]", false);
+            return 0;
+        }
+
+        bool force = false;
+        if (argc == 3 && !strcmp(argv[2], "force")) {
+            force = true;
+        }
+        rc = vm->unmountloop(force);
+    } else {
+        cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown loop cmd", false);
+        return 0;
+    }
+
+    if (!rc) {
+        cli->sendMsg(ResponseCode::CommandOkay, "loop operation succeeded", false);
+    } else {
+        int erno = errno;
+        rc = ResponseCode::convertFromErrno();
+        cli->sendMsg(rc, "loop operation failed", true);
+    }
+
+    return 0;
+}
+#endif
 
 CommandListener::CryptfsCmd::CryptfsCmd() :
                  VoldCommand("cryptfs") {

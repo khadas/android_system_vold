@@ -60,11 +60,17 @@
 #include "Asec.h"
 #include "VoldUtil.h"
 #include "cryptfs.h"
+#include "fs/Iso9660.h"
 
 #define MASS_STORAGE_FILE_PATH  "/sys/class/android_usb/android0/f_mass_storage/lun/file"
 
 #define ROUND_UP_POWER_OF_2(number, po2) (((!!(number & ((1U << po2) - 1))) << po2)\
                                          + (number & (~((1U << po2) - 1))))
+
+#ifdef HAS_VIRTUAL_CDROM
+#define LOOP_DEV "/dev/block/loop0"
+#define LOOP_MOUNTPOINT "/mnt/loop"
+#endif
 
 using android::base::StringPrintf;
 
@@ -1824,6 +1830,113 @@ int VolumeManager::mountObb(const char *img, const char *key, int ownerGid) {
     }
     return 0;
 }
+
+#ifdef HAS_VIRTUAL_CDROM
+int VolumeManager::loopsetfd(const char * path)
+{
+    int fd,file_fd;
+
+    if ((fd = open(LOOP_DEV, O_RDWR)) < 0) {
+        SLOGE("Unable to open loop0 device (%s)",strerror(errno));
+        return -1;
+    }
+
+    if ((file_fd = open(path, O_RDWR)) < 0) {
+        SLOGE("Unable to open %s (%s)", path, strerror(errno));
+        close(fd);
+        return -1;
+    }
+
+    if (ioctl(fd, LOOP_SET_FD, file_fd) < 0) {
+        SLOGE("Error setting up loopback interface (%s)", strerror(errno));
+        close(file_fd);
+        close(fd);
+        return  -1;
+    }
+
+    close(fd);
+    close(file_fd);
+
+    SLOGD("loopsetfd (%s) ok\n", path);
+    return 0;
+}
+
+int VolumeManager::loopclrfd()
+{
+    int fd;
+    int rc=0;
+
+    if ((fd = open(LOOP_DEV, O_RDWR)) < 0) {
+        SLOGE("Unable to open loop0 device (%s)",strerror(errno));
+        return -1;
+    }
+
+    if (ioctl(fd, LOOP_CLR_FD, 0) < 0) {
+        SLOGE("Error setting up loopback interface (%s)", strerror(errno));
+        rc = -1;
+    }
+    close(fd);
+
+    SLOGD("loopclrfd ok\n");
+    return rc;
+}
+
+int VolumeManager::mountloop(const char * path) {
+    if (isMountpointMounted(LOOP_MOUNTPOINT)) {
+        SLOGW("loop file already mounted,please umount fist,then mount this file!");
+        errno = EBUSY;
+        return -1;
+    }
+
+    if (loopsetfd(path) < 0) {
+        return -1;
+    }
+
+    if (fs_prepare_dir(LOOP_MOUNTPOINT, 0700, AID_ROOT, AID_SDCARD_R)) {
+        SLOGE("failed to create loop mount points");
+        return -errno;
+    }
+
+    if (android::vold::iso9660::Mount(LOOP_DEV, LOOP_MOUNTPOINT, false, false,
+                AID_SDCARD_R, AID_SDCARD_R, 0007, true)) {
+        loopclrfd();
+        SLOGW("%s failed to mount via ISO9660(%s)", LOOP_DEV, strerror(errno));
+        return -1;
+    } else {
+        mLoopPath = strdup(path);
+        SLOGI("Successfully mount %s as ISO9660", LOOP_DEV);
+    }
+
+    return 0;
+}
+
+int VolumeManager::unmountloop(bool unused) {
+    if (!isMountpointMounted(LOOP_MOUNTPOINT)) {
+        SLOGW("no loop file mounted");
+        errno = ENOENT;
+        return -1;
+    }
+
+    android::vold::ForceUnmount(LOOP_MOUNTPOINT);
+    loopclrfd();
+    rmdir(LOOP_MOUNTPOINT);
+
+    if (mLoopPath != NULL) {
+        free(mLoopPath);
+        mLoopPath = NULL;
+    }
+
+    return 0;
+}
+
+void VolumeManager::unmountLoopIfNeed(const char *label) {
+    if (mLoopPath != NULL && strstr(mLoopPath, label)) {
+        SLOGD("umount loop");
+        unmountloop(true);
+    }
+}
+
+#endif
 
 int VolumeManager::listMountedObbs(SocketClient* cli) {
     FILE *fp = setmntent("/proc/mounts", "r");
