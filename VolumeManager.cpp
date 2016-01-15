@@ -322,15 +322,12 @@ void VolumeManager::handleBlockEvent(NetlinkEvent *evt) {
     }
     case NetlinkEvent::Action::kChange: {
         LOG(DEBUG) << "Disk at " << major << ":" << minor << " changed";
-        LOG(DEBUG) << "we do not deal with disk change";
-        /*
         for (auto disk : mDisks) {
             if (disk->getDevice() == device) {
                 disk->readMetadata();
                 disk->readPartitions();
             }
         }
-        */
         break;
     }
     case NetlinkEvent::Action::kRemove: {
