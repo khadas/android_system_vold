@@ -48,6 +48,7 @@ protected:
     status_t doFormat(const std::string& fsType) override;
 
     status_t readMetadata();
+    bool isSrdiskMounted() {return false;}
 
 private:
     /* Kernel device of raw, encrypted partition */
