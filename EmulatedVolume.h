@@ -44,6 +44,7 @@ public:
 protected:
     status_t doMount() override;
     status_t doUnmount() override;
+    bool isSrdiskMounted() {return false;}
 
 private:
     std::string mRawPath;

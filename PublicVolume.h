@@ -49,6 +49,7 @@ protected:
     status_t doMount() override;
     status_t doUnmount() override;
     status_t doFormat(const std::string& fsType) override;
+    bool isSrdiskMounted() { return mSrMounted;}
 
     status_t readMetadata();
     status_t initAsecStage();
@@ -74,6 +75,8 @@ private:
     std::string mFsUuid;
     /* User-visible filesystem label */
     std::string mFsLabel;
+
+    bool mSrMounted;
 
     /* Just sd/udisk physical devices are used */
     bool mJustPhysicalDev;

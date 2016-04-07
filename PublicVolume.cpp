@@ -49,6 +49,7 @@ PublicVolume::PublicVolume(dev_t device) :
         VolumeBase(Type::kPublic), mDevice(device), mFusePid(0), mJustPhysicalDev(false) {
     setId(StringPrintf("public:%u,%u", major(device), minor(device)));
     mDevPath = StringPrintf("/dev/block/vold/%s", getId().c_str());
+    mSrMounted = false;
 }
 
 PublicVolume::PublicVolume(const std::string& physicalDevName) :
@@ -63,6 +64,12 @@ PublicVolume::~PublicVolume() {
 status_t PublicVolume::readMetadata() {
     status_t res = ReadMetadataUntrusted(mDevPath, mFsType, mFsUuid, mFsLabel);
     notifyEvent(ResponseCode::VolumeFsTypeChanged, mFsType);
+    // TODO: find the Uuid of srdisk
+    // If mFsUuid of publicVolume is empty,
+    // it will cause systemUi crash when it is mounted
+    if (mFsUuid.empty() && major(mDevice) == 11) {
+        mFsUuid = "sr0";
+    }
     notifyEvent(ResponseCode::VolumeFsUuidChanged, mFsUuid);
     notifyEvent(ResponseCode::VolumeFsLabelChanged, mFsLabel);
     return res;
@@ -109,7 +116,9 @@ status_t PublicVolume::doMount() {
     if (mFsType != "vfat" &&
         mFsType != "ntfs" &&
         mFsType != "exfat" &&
-        mFsType != "hfs") {
+        mFsType != "hfs" &&
+        mFsType != "iso9660" &&
+        mFsType != "udf") {
         LOG(ERROR) << getId() << " unsupported filesystem " << mFsType;
         return -EIO;
     }
@@ -124,7 +133,11 @@ status_t PublicVolume::doMount() {
         checkStatus = exfat::Check(mDevPath.c_str());
     } else if (mFsType == "hfs") {
         checkStatus = hfsplus::Check(mDevPath.c_str());
+    } else if (mFsType == "iso9660" || mFsType == "udf") {
+        // iso needn't check
+        checkStatus = iso9660::Check(mDevPath.c_str());
     }
+
 
     if (checkStatus) {
         LOG(ERROR) << getId() << " failed to check filesystem " << mFsType;
@@ -182,12 +195,14 @@ status_t PublicVolume::doMount() {
         if ((mountStatus = hfsplus::Mount(mDevPath.c_str(), mRawPath.c_str(), false, false,
                             AID_MEDIA_RW, AID_MEDIA_RW, 0007, true)) != 0) {
             LOG(ERROR) << mDevPath.c_str() << " failed to mount via hfs+";
-            if ((mountStatus = iso9660::Mount(mDevPath.c_str(), mRawPath.c_str(), false, false,
-                            AID_MEDIA_RW, AID_MEDIA_RW, 0007, true)) != 0) {
-                LOG(INFO) << mDevPath.c_str() << " failed to mount via iso9660";
-            } else {
-                LOG(INFO) << "successfully mount " << mDevPath.c_str() << " as iso9660";
-            }
+        }
+    } else if (mFsType == "iso9660" || mFsType == "udf") {
+        if ((mountStatus = iso9660::Mount(mDevPath.c_str(), mRawPath.c_str(), false, false,
+                        AID_MEDIA_RW, AID_MEDIA_RW, 0007, true)) != 0) {
+            LOG(INFO) << mDevPath.c_str() << " failed to mount via iso9660";
+        } else {
+            mSrMounted = true;
+            LOG(INFO) << "successfully mount " << mDevPath.c_str() << " as iso9660";
         }
     }
 

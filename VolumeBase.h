@@ -102,6 +102,7 @@ public:
     status_t mount();
     status_t unmount();
     status_t format(const std::string& fsType);
+    virtual bool isSrdiskMounted() = 0;
 
 protected:
     explicit VolumeBase(Type type);

@@ -324,6 +324,12 @@ void VolumeManager::handleBlockEvent(NetlinkEvent *evt) {
         LOG(DEBUG) << "Disk at " << major << ":" << minor << " changed";
         for (auto disk : mDisks) {
             if (disk->getDevice() == device) {
+                if (disk->isSrdiskMounted()) {
+                    LOG(DEBUG) << "srdisk  ejected";
+                    disk->destroyAllVolumes();
+                    break;
+                }
+
                 disk->readMetadata();
                 disk->readPartitions();
             }
