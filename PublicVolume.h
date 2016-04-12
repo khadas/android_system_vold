@@ -53,6 +53,7 @@ protected:
 
     status_t readMetadata();
     status_t initAsecStage();
+    status_t prepareDir(const std::string& path, mode_t mode, uid_t uid, gid_t gid);
 
 private:
     /* Kernel device representing partition */

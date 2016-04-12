@@ -163,10 +163,10 @@ status_t PublicVolume::doMount() {
         setPath(mRawPath);
     }
 
-    if (fs_prepare_dir(mRawPath.c_str(), 0700, AID_ROOT, AID_ROOT) ||
-            fs_prepare_dir(mFuseDefault.c_str(), 0700, AID_ROOT, AID_ROOT) ||
-            fs_prepare_dir(mFuseRead.c_str(), 0700, AID_ROOT, AID_ROOT) ||
-            fs_prepare_dir(mFuseWrite.c_str(), 0700, AID_ROOT, AID_ROOT)) {
+    if (prepareDir(mRawPath, 0700, AID_ROOT, AID_ROOT) ||
+            prepareDir(mFuseDefault, 0700, AID_ROOT, AID_ROOT) ||
+            prepareDir(mFuseRead, 0700, AID_ROOT, AID_ROOT) ||
+            prepareDir(mFuseWrite, 0700, AID_ROOT, AID_ROOT)) {
         PLOG(ERROR) << getId() << " failed to create mount points";
         return -errno;
     }
@@ -312,6 +312,28 @@ status_t PublicVolume::doFormat(const std::string& fsType) {
     } else {
         LOG(ERROR) << "Unsupported filesystem " << fsType;
         return -EINVAL;
+    }
+
+    return OK;
+}
+
+status_t PublicVolume::prepareDir(const std::string& path,
+        mode_t mode, uid_t uid, gid_t gid) {
+    if (fs_prepare_dir(path.c_str(), 0700, AID_ROOT, AID_ROOT)) {
+        if (errno == ENOTCONN) { // Transport endpoint is not connected
+            LOG(ERROR) << getId() << " failed to create mount point";
+            LOG(INFO) << "umount " << path << " and try again";
+            // lazy umount
+            if (!umount2(path.c_str(), MNT_DETACH) || errno == EINVAL || errno == ENOENT) {
+                if (fs_prepare_dir(path.c_str(), 0700, AID_ROOT, AID_ROOT)) {
+                    return -1;
+                }
+                return OK;
+            }
+            PLOG(ERROR) << " failed to umount " << path;
+            return -1;
+        }
+        return -1;
     }
 
     return OK;
