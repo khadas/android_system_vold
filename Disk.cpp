@@ -324,13 +324,13 @@ status_t Disk::readPartitions() {
             dev_t partDevice = makedev(major(mDevice), minor(mDevice) + i);
 
             if (table == Table::kMbr) {
+                const char* type = strtok(nullptr, kSgdiskToken);
+
                 if (IsJustPhysicalDevice(mSysPath, physicalDevName)) {
                     LOG(INFO) << " here,we don't create public:xx,xx for physical device only!";
                     handleJustPublicPhysicalDevice(physicalDevName);
                     break;
                 }
-
-                const char* type = strtok(nullptr, kSgdiskToken);
 
                 switch (strtol(type, nullptr, 16)) {
                 case 0x06: // FAT16
