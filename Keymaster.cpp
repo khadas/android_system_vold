@@ -18,6 +18,7 @@
 
 #include <android-base/logging.h>
 #include <hardware/hardware.h>
+#include <hardware/keymaster0.h>
 #include <hardware/keymaster1.h>
 #include <hardware/keymaster2.h>
 
@@ -191,6 +192,13 @@ Keymaster::Keymaster() {
         mDevice = std::make_shared<Keymaster2Device>(device);
     } else {
         LOG(ERROR) << "module_api_version is " << module->module_api_version;
+        LOG(ERROR) << "using software keymaster instead!!";
+        SoftKeymasterDevice* soft_device = new SoftKeymasterDevice();
+        AuthorizationSet version_info(AuthorizationSetBuilder()
+                .Authorization(TAG_OS_VERSION, 060000)
+                .Authorization(TAG_OS_PATCHLEVEL, 201603));
+        soft_device->keymaster2_device()->configure(soft_device->keymaster2_device(), &version_info);
+        mDevice = std::make_shared<Keymaster2Device>(soft_device->keymaster2_device());
         return;
     }
 }

@@ -22,6 +22,8 @@
 #include <utility>
 
 #include <keymaster/authorization_set.h>
+#include <keymaster/soft_keymaster_context.h>
+#include <keymaster/soft_keymaster_device.h>
 
 namespace android {
 namespace vold {

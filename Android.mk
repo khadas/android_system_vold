@@ -62,6 +62,7 @@ common_shared_libraries := \
 	libsoftkeymaster \
 	libbase \
 	libkeymaster_messages \
+	libsoftkeymasterdevice \
 
 common_static_libraries := \
 	libbootloader_message_writer \
