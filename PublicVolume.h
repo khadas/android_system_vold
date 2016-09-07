@@ -40,6 +40,7 @@ namespace vold {
 class PublicVolume : public VolumeBase {
 public:
     explicit PublicVolume(dev_t device);
+    explicit PublicVolume(const std::string& physicalDevName);
     virtual ~PublicVolume();
 
 protected:
@@ -48,9 +49,11 @@ protected:
     status_t doMount() override;
     status_t doUnmount() override;
     status_t doFormat(const std::string& fsType) override;
+    bool isSrdiskMounted() { return mSrMounted;}
 
     status_t readMetadata();
     status_t initAsecStage();
+    status_t prepareDir(const std::string& path, mode_t mode, uid_t uid, gid_t gid);
 
 private:
     /* Kernel device representing partition */
@@ -73,6 +76,11 @@ private:
     std::string mFsUuid;
     /* User-visible filesystem label */
     std::string mFsLabel;
+
+    bool mSrMounted;
+
+    /* Just sd/udisk physical devices are used */
+    bool mJustPhysicalDev;
 
     DISALLOW_COPY_AND_ASSIGN(PublicVolume);
 };

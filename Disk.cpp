@@ -49,6 +49,7 @@ static const char* kSgdiskToken = " \t\n";
 static const char* kSysfsMmcMaxMinors = "/sys/module/mmcblk/parameters/perdev_minors";
 
 static const unsigned int kMajorBlockScsiA = 8;
+static const unsigned int kMajorBlockSr = 11;
 static const unsigned int kMajorBlockScsiB = 65;
 static const unsigned int kMajorBlockScsiC = 66;
 static const unsigned int kMajorBlockScsiD = 67;
@@ -113,6 +114,7 @@ Disk::Disk(const std::string& eventPath, dev_t device,
     mEventPath = eventPath;
     mSysPath = StringPrintf("/sys/%s", eventPath.c_str());
     mDevPath = StringPrintf("/dev/block/vold/%s", mId.c_str());
+    mSrdisk = (!strncmp(nickname.c_str(), "sr", 2)) ? true : false;
     CreateDeviceNode(mDevPath, mDevice);
 }
 
@@ -147,8 +149,11 @@ status_t Disk::create() {
     CHECK(!mCreated);
     mCreated = true;
     notifyEvent(ResponseCode::DiskCreated, StringPrintf("%d", mFlags));
-    readMetadata();
-    readPartitions();
+    // do nothing when srdisk is created
+    if (!mSrdisk) {
+        readMetadata();
+        readPartitions();
+    }
     return OK;
 }
 
@@ -158,6 +163,24 @@ status_t Disk::destroy() {
     mCreated = false;
     notifyEvent(ResponseCode::DiskDestroyed);
     return OK;
+}
+
+void Disk::handleJustPublicPhysicalDevice(
+    const std::string& physicalDevName) {
+    auto vol = std::shared_ptr<VolumeBase>(new PublicVolume(physicalDevName));
+    if (mJustPartitioned) {
+        LOG(DEBUG) << "Device just partitioned; silently formatting";
+        vol->setSilent(true);
+        vol->create();
+        vol->format("auto");
+        vol->destroy();
+        vol->setSilent(false);
+    }
+
+    mVolumes.push_back(vol);
+    vol->setDiskId(getId());
+    vol->setSysPath(getSysPath());
+    vol->create();
 }
 
 void Disk::createPublicVolume(dev_t device) {
@@ -173,6 +196,7 @@ void Disk::createPublicVolume(dev_t device) {
 
     mVolumes.push_back(vol);
     vol->setDiskId(getId());
+    vol->setSysPath(getSysPath());
     vol->create();
 }
 
@@ -228,6 +252,7 @@ status_t Disk::readMetadata() {
 
     unsigned int majorId = major(mDevice);
     switch (majorId) {
+    case kMajorBlockSr:
     case kMajorBlockScsiA: case kMajorBlockScsiB: case kMajorBlockScsiC: case kMajorBlockScsiD:
     case kMajorBlockScsiE: case kMajorBlockScsiF: case kMajorBlockScsiG: case kMajorBlockScsiH:
     case kMajorBlockScsiI: case kMajorBlockScsiJ: case kMajorBlockScsiK: case kMajorBlockScsiL:
@@ -279,6 +304,13 @@ status_t Disk::readMetadata() {
 }
 
 status_t Disk::readPartitions() {
+    if (mSrdisk) {
+        // srdisk has no partiton concept.
+        LOG(INFO) << "srdisk try entire disk as fake partition";
+        createPublicVolume(mDevice);
+        return OK;
+    }
+
     int8_t maxMinors = getMaxMinors();
     if (maxMinors < 0) {
         return -ENOTSUP;
@@ -304,6 +336,7 @@ status_t Disk::readPartitions() {
 
     Table table = Table::kUnknown;
     bool foundParts = false;
+    std::string physicalDevName;
     for (auto line : output) {
         char* cline = (char*) line.c_str();
         char* token = strtok(cline, kSgdiskToken);
@@ -329,12 +362,28 @@ status_t Disk::readPartitions() {
             if (table == Table::kMbr) {
                 const char* type = strtok(nullptr, kSgdiskToken);
 
+                if (IsJustPhysicalDevice(mSysPath, physicalDevName)) {
+                    LOG(INFO) << " here,we don't create public:xx,xx for physical device only!";
+                    handleJustPublicPhysicalDevice(physicalDevName);
+                    break;
+                }
+
                 switch (strtol(type, nullptr, 16)) {
                 case 0x06: // FAT16
                 case 0x0b: // W95 FAT32 (LBA)
                 case 0x0c: // W95 FAT32 (LBA)
                 case 0x0e: // W95 FAT16 (LBA)
+
+                case 0x07: // NTFS & EXFAT
                     createPublicVolume(partDevice);
+                    break;
+
+                default:
+                    // We should still create public volume here
+                    // cause some disk table types are not matched above
+                    // but can be mounted successfully
+                    createPublicVolume(partDevice);
+                    LOG(WARNING) << "unsupported table kMbr type " << type;
                     break;
                 }
             } else if (table == Table::kGpt) {
@@ -357,7 +406,11 @@ status_t Disk::readPartitions() {
         std::string fsType;
         std::string unused;
         if (ReadMetadataUntrusted(mDevPath, fsType, unused, unused) == OK) {
-            createPublicVolume(mDevice);
+            if (IsJustPhysicalDevice(mSysPath, physicalDevName)) {
+                handleJustPublicPhysicalDevice(physicalDevName);
+            } else {
+                createPublicVolume(mDevice);
+            }
         } else {
             LOG(WARNING) << mId << " failed to identify, giving up";
         }
@@ -522,6 +575,18 @@ void Disk::notifyEvent(int event) {
 void Disk::notifyEvent(int event, const std::string& value) {
     VolumeManager::Instance()->getBroadcaster()->sendBroadcast(event,
             StringPrintf("%s %s", getId().c_str(), value.c_str()).c_str(), false);
+}
+
+bool Disk::isSrdiskMounted() {
+    if (!mSrdisk) {
+        return false;
+    }
+
+    for (auto vol : mVolumes) {
+        return vol->isSrdiskMounted();
+    }
+
+    return false;
 }
 
 int Disk::getMaxMinors() {

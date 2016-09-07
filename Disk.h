@@ -79,8 +79,10 @@ public:
     status_t partitionPrivate();
     status_t partitionMixed(int8_t ratio);
 
+    bool isSrdiskMounted();
     void notifyEvent(int msg);
     void notifyEvent(int msg, const std::string& value);
+    void destroyAllVolumes();
 
 private:
     /* ID that uniquely references this disk */
@@ -107,11 +109,12 @@ private:
     bool mCreated;
     /* Flag that we just partitioned and should format all volumes */
     bool mJustPartitioned;
+    /* Flag indicating is srdisk or not */
+    bool mSrdisk;
 
     void createPublicVolume(dev_t device);
     void createPrivateVolume(dev_t device, const std::string& partGuid);
-
-    void destroyAllVolumes();
+    void handleJustPublicPhysicalDevice(const std::string& physicalDevName);
 
     int getMaxMinors();
 

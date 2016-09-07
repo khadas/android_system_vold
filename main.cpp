@@ -39,9 +39,20 @@
 #include <dirent.h>
 #include <fs_mgr.h>
 
+#define LOG_TAG "Vold"
+
+#include "cutils/klog.h"
+#include "cutils/log.h"
+#include "cutils/properties.h"
+
+#ifdef SUPPORT_DIG
+#include "DigManager.h"
+#endif
+
 static int process_config(VolumeManager *vm);
 static void coldboot(const char *path);
 static void parse_args(int argc, char** argv);
+static void set_media_poll_time(void);
 
 struct fstab *fstab;
 
@@ -58,7 +69,11 @@ int main(int argc, char** argv) {
     LOG(VERBOSE) << "Detected support for:"
             << (android::vold::IsFilesystemSupported("ext4") ? " ext4" : "")
             << (android::vold::IsFilesystemSupported("f2fs") ? " f2fs" : "")
-            << (android::vold::IsFilesystemSupported("vfat") ? " vfat" : "");
+            << (android::vold::IsFilesystemSupported("vfat") ? " vfat" : "")
+            << (android::vold::IsFilesystemSupported("ntfs") ? " ntfs" : "")
+            << (android::vold::IsFilesystemSupported("exfat") ? " exfat" : "")
+            << (android::vold::IsFilesystemSupported("hfsplus") ? " hfsplus" : "")
+            << (android::vold::IsFilesystemSupported("iso9660") ? " iso9660" : "");
 
     VolumeManager *vm;
     CommandListener *cl;
@@ -92,6 +107,10 @@ int main(int argc, char** argv) {
         exit(1);
     }
 
+#ifdef SUPPORT_DIG
+    DigManager::StartDig();
+#endif
+
     if (property_get_bool("vold.debug", false)) {
         vm->setDebug(true);
     }
@@ -115,6 +134,7 @@ int main(int argc, char** argv) {
         exit(1);
     }
 
+    set_media_poll_time();
     coldboot("/sys/block");
 //    coldboot("/sys/class/switch");
 
@@ -138,6 +158,19 @@ int main(int argc, char** argv) {
 
     LOG(ERROR) << "Vold exiting";
     exit(0);
+}
+
+static void set_media_poll_time(void)
+{
+    int fd;
+    fd = open ("/sys/module/block/parameters/events_dfl_poll_msecs", O_WRONLY);
+        if (fd >= 0) {
+            write(fd, "2000", 4);
+            close (fd);
+        }else {
+            SLOGE("kernel not support media poll uevent!");
+        }
+        return;
 }
 
 static void parse_args(int argc, char** argv) {

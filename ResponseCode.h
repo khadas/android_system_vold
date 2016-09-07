@@ -86,6 +86,14 @@ public:
     static const int BenchmarkResult = 661;
     static const int TrimResult = 662;
 
+    //for dig
+    //data remount as read only by kernel
+    static const int DigReport_DataReadOnly        = 680;
+    //cannot mount data
+    static const int DigReport_DataCrash           = 681;
+    //system file change
+    static const int DigReport_SystemChanged       = 682;
+
     static int convertFromErrno();
 };
 #endif
