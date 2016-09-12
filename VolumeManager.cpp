@@ -217,6 +217,9 @@ VolumeManager::VolumeManager() {
     mSavedDirtyRatio = -1;
     // set dirty ratio to 0 when UMS is active
     mUmsDirtyRatio = 0;
+#ifdef HAS_VIRTUAL_CDROM
+    mLoopPath = NULL;
+#endif
 }
 
 VolumeManager::~VolumeManager() {
