@@ -96,9 +96,10 @@ int Check(const char *fsPath) {
             return -1;
 
         default:
-            LOG(ERROR) << "exfat check failed.unknown exit code " << rc;
-            errno = EIO;
-            return -1;
+            LOG(ERROR) << "exfat check failed.unknown exit code " << status;
+            //errno = EIO;
+            //We can still mount some disks even if fs check failed.
+            return 0;
         }
     } while (0);
 
