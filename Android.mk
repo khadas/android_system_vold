@@ -65,7 +65,7 @@ common_shared_libraries := \
 	libsoftkeymasterdevice \
 
 common_static_libraries := \
-	libbootloader_message_writer \
+	libbootloader_message \
 	libfs_mgr \
 	libfec \
 	libfec_rs \
