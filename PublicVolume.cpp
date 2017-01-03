@@ -67,9 +67,13 @@ status_t PublicVolume::readMetadata() {
     // TODO: find the Uuid of srdisk
     // If mFsUuid of publicVolume is empty,
     // it will cause systemUi crash when it is mounted
-    if (mFsUuid.empty() && major(mDevice) == 11) {
-        mFsUuid = "sr0";
+    if (mFsUuid.empty()) {
+        if (major(mDevice) == 11)
+            mFsUuid = "sr0";
+        else
+            mFsUuid = "fakeUuid";
     }
+
     notifyEvent(ResponseCode::VolumeFsUuidChanged, mFsUuid);
     notifyEvent(ResponseCode::VolumeFsLabelChanged, mFsLabel);
     return res;
