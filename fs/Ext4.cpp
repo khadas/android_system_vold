@@ -127,7 +127,7 @@ status_t Check(const std::string& source, const std::string& target) {
 }
 
 status_t Mount(const std::string& source, const std::string& target, bool ro,
-        bool remount, bool executable) {
+        bool remount, bool executable, const std::string& type) {
     int rc;
     unsigned long flags;
 
@@ -140,12 +140,12 @@ status_t Mount(const std::string& source, const std::string& target, bool ro,
     flags |= (ro ? MS_RDONLY : 0);
     flags |= (remount ? MS_REMOUNT : 0);
 
-    rc = mount(c_source, c_target, "ext4", flags, NULL);
+    rc = mount(c_source, c_target, type.c_str(), flags, NULL);
 
     if (rc && errno == EROFS) {
         SLOGE("%s appears to be a read only filesystem - retrying mount RO", c_source);
         flags |= MS_RDONLY;
-        rc = mount(c_source, c_target, "ext4", flags, NULL);
+        rc = mount(c_source, c_target, type.c_str(), flags, NULL);
     }
 
     return rc;

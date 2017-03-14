@@ -19,10 +19,12 @@
 #include "fs/Exfat.h"
 #include "fs/Hfsplus.h"
 #include "fs/Iso9660.h"
+#include "fs/Ext4.h"
 #include "PublicVolume.h"
 #include "Utils.h"
 #include "VolumeManager.h"
 #include "ResponseCode.h"
+#include "cryptfs.h"
 
 #include <android-base/stringprintf.h>
 #include <android-base/logging.h>
@@ -44,6 +46,8 @@ namespace vold {
 static const char* kFusePath = "/system/bin/sdcard";
 
 static const char* kAsecPath = "/mnt/secure/asec";
+
+static const char* kChownPath = "/system/bin/chown";
 
 PublicVolume::PublicVolume(dev_t device) :
         VolumeBase(Type::kPublic), mDevice(device), mFusePid(0), mJustPhysicalDev(false) {
@@ -120,6 +124,7 @@ status_t PublicVolume::doMount() {
     if (mFsType != "vfat" &&
         mFsType != "ntfs" &&
         mFsType != "exfat" &&
+        strncmp(mFsType.c_str(), "ext", 3) &&
         mFsType != "hfs" &&
         mFsType != "iso9660" &&
         mFsType != "udf") {
@@ -135,6 +140,9 @@ status_t PublicVolume::doMount() {
         checkStatus = ntfs::Check(mDevPath.c_str());
     } else if (mFsType == "exfat") {
         checkStatus = exfat::Check(mDevPath.c_str());
+    } else if (!strncmp(mFsType.c_str(), "ext", 3)) {
+        // ext2/3/4 check later
+        checkStatus = 0;
     } else if (mFsType == "hfs") {
         checkStatus = hfsplus::Check(mDevPath.c_str());
     } else if (mFsType == "iso9660" || mFsType == "udf") {
@@ -195,6 +203,16 @@ status_t PublicVolume::doMount() {
     } else if (mFsType == "exfat") {
         mountStatus = exfat::Mount(logicPartDevPath.c_str(), mRawPath.c_str(), false, false,
                             AID_MEDIA_RW, AID_MEDIA_RW, 0007, true);
+    } else if (!strncmp(mFsType.c_str(), "ext", 3)) {
+        int res = ext4::Check(logicPartDevPath, mRawPath);
+        if (res == 0 || res == 1) {
+            LOG(DEBUG) << getId() << " passed filesystem check";
+        } else {
+            PLOG(ERROR) << getId() << " failed filesystem check";
+        //    return -EIO;
+        }
+
+        mountStatus = ext4::Mount(logicPartDevPath, mRawPath, false, false, true, mFsType);
     } else if (mFsType == "hfs") {
         if ((mountStatus = hfsplus::Mount(mDevPath.c_str(), mRawPath.c_str(), false, false,
                             AID_MEDIA_RW, AID_MEDIA_RW, 0007, true)) != 0) {
@@ -213,6 +231,37 @@ status_t PublicVolume::doMount() {
     if (mountStatus) {
         PLOG(ERROR) << getId() << " failed to mount " << mDevPath;
         return -EIO;
+    }
+
+    if (!strncmp(mFsType.c_str(), "ext", 3)) {
+        std::vector<std::string> cmd;
+        cmd.push_back(kChownPath);
+        cmd.push_back("-R");
+        cmd.push_back("media_rw:media_rw");
+        cmd.push_back(mRawPath);
+
+        std::vector<std::string> output;
+        status_t res = ForkExecvp(cmd, output);
+        if (res != OK) {
+            LOG(WARNING) << "chown failed " << mRawPath;
+            return res;
+        }
+
+        // TODO: find a cleaner way of waiting for restorecon to finish
+        property_set("selinux.restorecon_recursive", "");
+        property_set("selinux.restorecon_recursive", mRawPath.c_str());
+
+        char value[PROPERTY_VALUE_MAX];
+        while (true) {
+            property_get("selinux.restorecon_recursive", value, "");
+            if (strcmp(mRawPath.c_str(), value) == 0) {
+                break;
+            }
+            sleep(1);
+            LOG(VERBOSE) << "Waiting for restorecon...";
+        }
+
+        LOG(VERBOSE) << "Finished restorecon of " << mRawPath;
     }
 
     if (getMountFlags() & MountFlags::kPrimary) {
