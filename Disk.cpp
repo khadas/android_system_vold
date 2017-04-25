@@ -369,6 +369,10 @@ status_t Disk::readPartitions() {
                     break;
                 }
 
+                // support mort than 16 partitions
+                if (i > 15)
+                    getPhysicalDev(partDevice, mSysPath, i);
+
                 switch (strtol(type, nullptr, 16)) {
                 case 0x06: // FAT16
                 case 0x0b: // W95 FAT32 (LBA)
@@ -604,7 +608,7 @@ int Disk::getMaxMinors() {
     case kMajorBlockScsiI: case kMajorBlockScsiJ: case kMajorBlockScsiK: case kMajorBlockScsiL:
     case kMajorBlockScsiM: case kMajorBlockScsiN: case kMajorBlockScsiO: case kMajorBlockScsiP: {
         // Per Documentation/devices.txt this is static
-        return 15;
+        return 31;
     }
     case kMajorBlockMmc: {
         // Per Documentation/devices.txt this is dynamic
@@ -626,6 +630,25 @@ int Disk::getMaxMinors() {
 
     LOG(ERROR) << "Unsupported block major type " << majorId;
     return -ENOTSUP;
+}
+
+void Disk::getPhysicalDev(dev_t &device, const std:: string& sysPath, int part) {
+    std::string smajor, sminor;
+    std::string physicalDev, lpDev;
+    int major, minor;
+
+    if (part <= 15)
+        return;
+
+    if (GetPhysicalDevice(sysPath, physicalDev) == OK) {
+        lpDev =  StringPrintf("%s%d", physicalDev.c_str(), part);
+        if (!access(lpDev.c_str(), F_OK) &&
+                readBlockDevMajorAndMinor(lpDev, smajor, sminor) == OK) {
+            major = atoi(smajor.c_str());
+            minor = atoi(sminor.c_str());
+            device = makedev(major, minor);
+        }
+    }
 }
 
 }  // namespace vold

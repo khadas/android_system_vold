@@ -697,7 +697,7 @@ bool IsRunningInEmulator() {
     return property_get_bool("ro.kernel.qemu", 0);
 }
 
-static status_t readBlockDevMajorAndMinor(
+status_t readBlockDevMajorAndMinor(
     const std::string& devPath,
     std::string& major, std::string& minor) {
     major.clear();
@@ -764,7 +764,7 @@ status_t GetLogicalPartitionDevice(
     const dev_t device, const std::string& sysPath, std::string& logicalPartitionDev) {
     std::string physicalDev;
     const unsigned int kMajorBlockMmc = 179;
-    const unsigned int kMaxNumOfPartition = 20;
+    const unsigned int kMaxNumOfPartition = 31;
 
     // logical partition dev's major & minor
     unsigned int devMajor = major(device);

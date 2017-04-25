@@ -157,6 +157,10 @@ bool IsJustPhysicalDevice(
     const std::string& sysPath,
     std::string& physicalDevName);
 
+status_t readBlockDevMajorAndMinor(
+    const std::string& devPath,
+    std::string& major, std::string& minor);
+
 }  // namespace vold
 }  // namespace android
 

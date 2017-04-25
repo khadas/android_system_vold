@@ -115,6 +115,7 @@ private:
     void createPublicVolume(dev_t device);
     void createPrivateVolume(dev_t device, const std::string& partGuid);
     void handleJustPublicPhysicalDevice(const std::string& physicalDevName);
+    void getPhysicalDev(dev_t &device, const std:: string& sysPath, int part);
 
     int getMaxMinors();
 
