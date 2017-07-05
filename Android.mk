@@ -89,7 +89,6 @@ LOCAL_STATIC_LIBRARIES := $(common_static_libraries)
 LOCAL_MODULE_TAGS := eng tests
 LOCAL_CFLAGS := $(vold_cflags)
 LOCAL_CFLAGS += -DHAS_NTFS_3G
-LOCAL_CFLAGS += -DHAS_EXFAT_FUSE
 LOCAL_CFLAGS += -DHAS_VIRTUAL_CDROM
 LOCAL_CONLYFLAGS := $(vold_conlyflags)
 
@@ -110,7 +109,6 @@ LOCAL_C_INCLUDES := $(common_c_includes)
 LOCAL_CFLAGS := $(vold_cflags)
 LOCAL_CFLAGS += -Werror=format
 LOCAL_CFLAGS += -DHAS_NTFS_3G
-LOCAL_CFLAGS += -DHAS_EXFAT_FUSE
 LOCAL_CFLAGS += -DHAS_VIRTUAL_CDROM
 
 ifneq ($(TARGET_SUPPORT_DIG),false)
