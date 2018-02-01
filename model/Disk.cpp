@@ -320,6 +320,59 @@ status_t Disk::readMetadata() {
     return OK;
 }
 
+bool Disk::isEntireDiskAsPartition(const int part) {
+    int iPos = mSysPath.find("/block/");
+    if (iPos < 0 || part < 1) {
+        LOG(INFO) << "can not find block dir.";
+        return false;
+    }
+    std::string physicalDev = StringPrintf("/dev/block/%s",
+            mSysPath.substr(iPos + 7).c_str());
+
+    int retry = 8;
+    while (true) {
+        int ret = access(physicalDev.c_str(), F_OK);
+        if (ret) {
+            LOG(INFO) << "fail to access physical dev:" << physicalDev;
+            retry--;
+            usleep(50000);
+        } else {
+            break;
+        }
+        if ( !retry) {
+            LOG(INFO) << "physical dev: " << physicalDev << " doesn't exist";
+            return false;
+        }
+    }
+
+    std::string partDevName;
+    for (int i = 1; i <= part; i++) {
+        if (mFlags & Flags::kUsb) {
+            partDevName = StringPrintf("%s%d", physicalDev.c_str(), i);
+        } else if (mFlags & Flags::kSd) {
+            partDevName = StringPrintf("%sp%d", physicalDev.c_str(), i);
+        }
+        retry = 4;
+        while (true) {
+            int ret = access(partDevName.c_str(), F_OK);
+            if (ret) {
+                retry--;
+                usleep(50000);
+            } else {
+                LOG(INFO) << "now can access :" << partDevName;
+                return false;
+            }
+            if ( !retry) {
+                LOG(INFO) << "physical dev: " << partDevName << " doesn't exist";
+                break;
+            }
+        }
+    }
+
+    LOG(INFO) << "physical dev: " << physicalDev << "[1-" << part << "] doesn't exist";
+    return true;
+}
+
 status_t Disk::readPartitions() {
     int maxMinors = getMaxMinors();
     if (maxMinors < 0) {
@@ -382,6 +435,11 @@ status_t Disk::readPartitions() {
                     LOG(WARNING) << "Invalid partition type " << *it;
                     continue;
                 }
+                if (isEntireDiskAsPartition(i)) {
+                    LOG(INFO) << "don't create public:xx,xx for physical device only!";
+                    foundParts = false;
+                    break;
+                }
 
                 switch (type) {
                     case 0x06:  // FAT16
@@ -390,6 +448,13 @@ status_t Disk::readPartitions() {
                     case 0x0c:  // W95 FAT32 (LBA)
                     case 0x0e:  // W95 FAT16 (LBA)
                         createPublicVolume(partDevice);
+                        break;
+                    default :
+                        // We should still create public volume here
+                        // cause some udisk partition types are not matched above
+                        // but can be mounted successfully
+                        createPublicVolume(partDevice);
+                        LOG(WARNING) << "unsupported table kMbr part type " << type;
                         break;
                 }
             } else if (table == Table::kGpt) {

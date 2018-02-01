@@ -103,12 +103,12 @@ status_t PublicVolume::doMount() {
     if (mFsType == "vfat" && vfat::IsSupported()) {
         if (vfat::Check(mDevPath)) {
             LOG(ERROR) << getId() << " failed filesystem check";
-            return -EIO;
+            //return -EIO;
         }
     } else if (mFsType == "exfat" && exfat::IsSupported()) {
         if (exfat::Check(mDevPath)) {
             LOG(ERROR) << getId() << " failed filesystem check";
-            return -EIO;
+            //return -EIO;
         }
     } else {
         LOG(ERROR) << getId() << " unsupported filesystem " << mFsType;
