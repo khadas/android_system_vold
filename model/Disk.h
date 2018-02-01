@@ -86,6 +86,8 @@ class Disk {
     status_t partitionPrivate();
     status_t partitionMixed(int8_t ratio);
 
+    bool isEntireDiskAsPartition(const int part);
+
   private:
     /* ID that uniquely references this disk */
     std::string mId;
