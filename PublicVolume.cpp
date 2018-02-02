@@ -132,6 +132,9 @@ status_t PublicVolume::doMount() {
         return -EIO;
     }
 
+    if ((strcmp(mFsLabel.c_str(),"ROOTFS")==0) && (!strncmp(mFsType.c_str(), "ext", 3)))
+        return -EIO;
+
     // Check filesystems
     status_t checkStatus = -1;
     if (mFsType == "vfat") {
