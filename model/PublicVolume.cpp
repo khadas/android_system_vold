@@ -212,7 +212,7 @@ status_t PublicVolume::doMount() {
     if (!(getMountFlags() & MountFlags::kVisible)) {
         // Not visible to apps, so no need to spin up FUSE
 	char prop_value[PROPERTY_VALUE_MAX];
-	property_get("ro.udisk.visible", prop_value, "");
+	property_get("ro.vendor.udisk.visible", prop_value, "");
 	if(!strcmp("true",prop_value))
 	{
 		LOG(DEBUG)<<"------force all volume visible-----------";	
