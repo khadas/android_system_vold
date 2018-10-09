@@ -100,7 +100,7 @@ VolumeManager::~VolumeManager() {
 
 int VolumeManager::updateVirtualDisk() {
     ATRACE_NAME("VolumeManager::updateVirtualDisk");
-    if (android::base::GetBoolProperty(kPropVirtualDisk, false) && !android::base::GetBoolProperty("vold.has_adoptable", false)) {
+    if (android::base::GetBoolProperty(kPropVirtualDisk, false)) {
         if (access(kPathVirtualDisk, F_OK) != 0) {
             Loop::createImageFile(kPathVirtualDisk, kSizeVirtualDisk / 512);
         }
