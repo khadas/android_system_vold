@@ -30,8 +30,8 @@ namespace android {
 namespace vold {
 namespace exfat {
 
-static const char* kMkfsPath = "/system/bin/mkfs.exfat";
-static const char* kFsckPath = "/system/bin/fsck.exfat";
+static const char* kMkfsPath = "/system_ext/bin/mkfs.exfat";
+static const char* kFsckPath = "/system_ext/bin/fsck.exfat";
 
 bool IsSupported() {
     return access(kMkfsPath, X_OK) == 0 && access(kFsckPath, X_OK) == 0 &&
