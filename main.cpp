@@ -45,6 +45,7 @@ static int process_config(VolumeManager* vm, bool* has_adoptable, bool* has_quot
                           bool* has_reserved);
 static void coldboot(const char *path);
 static void parse_args(int argc, char** argv);
+static void set_media_poll_time(void);
 
 struct selabel_handle *sehandle;
 
@@ -128,6 +129,8 @@ int main(int argc, char** argv) {
     }
     ATRACE_END();
 
+    set_media_poll_time();
+
     // This call should go after listeners are started to avoid
     // a deadlock between vold and init (see b/34278978 for details)
     android::base::SetProperty("vold.has_adoptable", has_adoptable ? "1" : "0");
@@ -145,6 +148,18 @@ int main(int argc, char** argv) {
     LOG(INFO) << "vold shutting down";
 
     exit(0);
+}
+
+static void set_media_poll_time(void)
+{
+    int fd;
+    fd = open ("/sys/module/block/parameters/events_dfl_poll_msecs", O_WRONLY);
+    if (fd >= 0) {
+        write(fd, "2000", 4);
+        close (fd);
+    } else {
+        LOG(ERROR) << "kernel not support media poll uevent!";
+    }
 }
 
 static void parse_args(int argc, char** argv) {
