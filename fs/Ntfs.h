@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012 The Android Open Source Project
+ * Copyright (C) 2010 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,12 +14,17 @@
  * limitations under the License.
  */
 
-#pragma once
+#ifndef _NTFS_H
+#define _NTFS_H
 
-#include <fstab/fstab.h>
-#include <sys/cdefs.h>
+#include <unistd.h>
 
-extern android::fs_mgr::Fstab fstab_default;
+class Ntfs {
+public:
+    static int check(const char *fsPath);
+    static int doMount(const char *fsPath, const char *mountPoint, bool ro, int ownerUid,int ownerGid);
+    static int unMount(const char *mountPoint);
+    static int format(const char *fsPath, unsigned int numSectors, bool wipe, const char *label);
+};
 
-#define DATA_MNT_POINT "/data"
-#define ARRAY_SIZE(a) (sizeof(a) / sizeof(*(a)))
+#endif

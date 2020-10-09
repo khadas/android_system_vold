@@ -21,6 +21,11 @@
 #include "VolumeManager.h"
 #include "fs/Exfat.h"
 #include "fs/Vfat.h"
+#include "fs/Ext4.h"
+#include "fs/F2fs.h"
+#include "fs/Ntfs.h"
+
+#include <cutils/properties.h>
 
 #include <android-base/logging.h>
 #include <android-base/properties.h>
@@ -110,6 +115,38 @@ status_t PublicVolume::doMount() {
             LOG(ERROR) << getId() << " failed filesystem check";
             return -EIO;
         }
+    }  else if (mFsType == "ntfs") {
+        char value[PROPERTY_VALUE_MAX];
+        property_get("ro.factory.storage_suppntfs", value, "");
+        if (strcmp("true", value) == 0) {
+            int res = Ntfs::check(mDevPath.c_str());
+            if (res == 0 || res == 1) {
+                LOG(DEBUG) << getId() << " passed filesystem check";
+            } else {
+                PLOG(ERROR) << getId() << " failed filesystem check";
+                return -EIO;
+            }
+        }
+        else
+        {
+            LOG(DEBUG) << getId() << "Not support Ntfs in BoardConfig";
+        }
+    }  else if (mFsType == "ext4" && ext4::IsSupported()) {
+        int res = ext4::Check(mDevPath, mRawPath);
+        if (res == 0 || res == 1) {
+            LOG(DEBUG) << getId() << " passed filesystem check";
+        } else {
+            PLOG(ERROR) << getId() << " failed filesystem check";
+            return -EIO;
+        }
+    }  else if (mFsType == "f2fs" && f2fs::IsSupported()) {
+        int res = f2fs::Check(mDevPath);
+        if (res == 0) {
+            LOG(DEBUG) << getId() << " passed filesystem check";
+        } else {
+            PLOG(ERROR) << getId() << " failed filesystem check";
+            return -EIO;
+        }
     } else {
         LOG(ERROR) << getId() << " unsupported filesystem " << mFsType;
         return -EIO;
@@ -151,6 +188,21 @@ status_t PublicVolume::doMount() {
                          (isVisible ? AID_MEDIA_RW : AID_EXTERNAL_STORAGE), 0007)) {
             PLOG(ERROR) << getId() << " failed to mount " << mDevPath;
             return -EIO;
+        }
+    } else if (mFsType == "ntfs") {
+        if (Ntfs::doMount(mDevPath.c_str(), mRawPath.c_str(), false, false, false)) {
+            PLOG(ERROR) << getId() << " nfts failed to mount " << mDevPath;
+            return -EIO;
+        }
+    } else if (mFsType == "ext4") {
+        if (ext4::Mount(mDevPath, mRawPath, false, false, true)) {
+            PLOG(ERROR) << getId() << " failed to mount " << mDevPath;
+            return -EIO;
+        }
+    } else if (mFsType == "f2fs") {
+        if (f2fs::Mount(mDevPath, mRawPath)) {
+            PLOG(ERROR) << getId() << " failed to mount " << mDevPath;
+             return -EIO;
         }
     }
 
