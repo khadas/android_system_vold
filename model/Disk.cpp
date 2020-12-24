@@ -53,7 +53,7 @@ static const char* kSgdiskToken = " \t\n";
 
 static const char* kSysfsLoopMaxMinors = "/sys/module/loop/parameters/max_part";
 static const char* kSysfsMmcMaxMinorsDeprecated = "/sys/module/mmcblk/parameters/perdev_minors";
-static const char* kSysfsMmcMaxMinors = "/sys/module/mmc_block/parameters/perdev_minors";
+static const char* kSysfsMmcMaxMinors = "/sys/module/mmcblk/parameters/perdev_minors";
 
 static const unsigned int kMajorBlockLoop = 7;
 static const unsigned int kMajorBlockScsiA = 8;
@@ -73,6 +73,7 @@ static const unsigned int kMajorBlockScsiN = 133;
 static const unsigned int kMajorBlockScsiO = 134;
 static const unsigned int kMajorBlockScsiP = 135;
 static const unsigned int kMajorBlockMmc = 179;
+static const unsigned int kMajorBlockPCIENVME = 259;
 static const unsigned int kMajorBlockDynamicMin = 234;
 static const unsigned int kMajorBlockDynamicMax = 512;
 
@@ -292,6 +293,17 @@ status_t Disk::readMetadata() {
             }
             break;
         }
+        case kMajorBlockPCIENVME: {
+            std::string path(mSysPath + "/device/device/vendor");
+            std::string tmp;
+            if (!ReadFileToString(path, &tmp)) {
+                PLOG(WARNING) << "Failed to read vendor from " << path;
+                return -errno;
+            }
+            tmp = android::base::Trim(tmp);
+            mLabel = tmp;
+	    break;
+	}
         default: {
             if (IsVirtioBlkDevice(majorId)) {
                 LOG(DEBUG) << "Recognized experimental block major ID " << majorId
@@ -389,6 +401,7 @@ status_t Disk::readPartitions() {
                     case 0x0b:  // W95 FAT32 (LBA)
                     case 0x0c:  // W95 FAT32 (LBA)
                     case 0x0e:  // W95 FAT16 (LBA)
+                    case 0x83:  // W95 FAT16 (LBA)
                         createPublicVolume(partDevice);
                         break;
                 }
@@ -592,6 +605,14 @@ int Disk::getMaxMinors() {
             std::string tmp;
             if (!ReadFileToString(kSysfsMmcMaxMinors, &tmp) &&
                 !ReadFileToString(kSysfsMmcMaxMinorsDeprecated, &tmp)) {
+                LOG(ERROR) << "Failed to read max minors";
+                return -errno;
+            }
+            return std::stoi(tmp);
+        }
+        case kMajorBlockPCIENVME: {
+            std::string tmp;
+            if (!ReadFileToString(kSysfsMmcMaxMinors, &tmp)) {
                 LOG(ERROR) << "Failed to read max minors";
                 return -errno;
             }
