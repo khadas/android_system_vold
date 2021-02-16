@@ -175,6 +175,8 @@ status_t WaitForFile(const char* filename, std::chrono::nanoseconds timeout);
 
 bool FsyncDirectory(const std::string& dirname);
 
+bool FsyncParentDirectory(const std::string& path);
+
 bool writeStringToFile(const std::string& payload, const std::string& filename);
 
 void ConfigureMaxDirtyRatioForFuse(const std::string& fuse_mount, unsigned int max_ratio);
