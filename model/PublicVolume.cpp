@@ -247,6 +247,7 @@ status_t PublicVolume::doMount() {
                         "-u", "1023", // AID_MEDIA_RW
                         "-g", "1023", // AID_MEDIA_RW
                         "-U", std::to_string(getMountUserId()).c_str(),
+                        "-w",
                         mRawPath.c_str(),
                         stableName.c_str(),
                         NULL)) {
