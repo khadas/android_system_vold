@@ -226,6 +226,15 @@ status_t PrivateVolume::doFormat(const std::string& fsType) {
     }
 
     if (resolvedFsType == "ext4") {
+        int retry = 8;
+        while (access(mDmDevPath.c_str(), F_OK)) {
+            retry--;
+            usleep(50000);
+            if (!retry) {
+                LOG(INFO) << "dm dev: " << mDmDevPath << " doesn't exist";
+                break;
+            }
+        }
         // TODO: change reported mountpoint once we have better selinux support
         if (ext4::Format(mDmDevPath, 0, "/data")) {
             PLOG(ERROR) << getId() << " failed to format";
