@@ -211,6 +211,8 @@ status_t PrivateVolume::doUnmount() {
 
 status_t PrivateVolume::doFormat(const std::string& fsType) {
     std::string resolvedFsType = fsType;
+    uint64_t mSize = 0;
+
     if (fsType == "auto") {
         // For now, assume that all MMC devices are flash-based SD cards, and
         // give everyone else ext4 because sysfs rotational isn't reliable.
@@ -236,7 +238,11 @@ status_t PrivateVolume::doFormat(const std::string& fsType) {
             }
         }
         // TODO: change reported mountpoint once we have better selinux support
-        if (ext4::Format(mDmDevPath, 0, "/data")) {
+        if (GetBlockDevSize(mRawDevPath, &mSize) != OK) {
+            mSize = 0;
+        }
+
+        if (ext4::Format(mDmDevPath, (mSize / 32768), "/data")) {
             PLOG(ERROR) << getId() << " failed to format";
             return -EIO;
         }

@@ -745,6 +745,7 @@ status_t ForkExecvp(const std::vector<std::string>& args, std::vector<std::strin
         LOG(ERROR) << "Process exited with code: " << WEXITSTATUS(status);
         return WEXITSTATUS(status);
     }
+    sleep(1);
     return OK;
 }
 
