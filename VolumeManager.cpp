@@ -105,7 +105,7 @@ static const std::string kEmptyString("");
 static const unsigned int kSizeVirtualDisk = 536870912;
 
 static const unsigned int kMajorBlockMmc = 179;
-
+static const unsigned int kMajorBlockPcie = 259;
 using ScanProcCallback = bool(*)(uid_t uid, pid_t pid, int nsFd, const char* name, void* params);
 
 VolumeManager* VolumeManager::sInstance = NULL;
@@ -236,7 +236,9 @@ void VolumeManager::handleBlockEvent(NetlinkEvent* evt) {
                     int flags = source->getFlags();
                     if (major == kMajorBlockMmc || IsVirtioBlkDevice(major)) {
                         flags |= android::vold::Disk::Flags::kSd;
-                    } else {
+                    } else if(major == kMajorBlockPcie){
+                        flags |= android::vold::Disk::Flags::kPcie;
+                    }else {
                         flags |= android::vold::Disk::Flags::kUsb;
                     }
 

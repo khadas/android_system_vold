@@ -53,9 +53,9 @@ class Disk {
         kUsb = 1 << 3,
         /* Flag that disk is EMMC internal */
         kEmmc = 1 << 4,
-        /* Flag that disk is Stub disk, i.e., disk that is managed from outside
-         * Android (e.g., ARC++). */
-        kStub = 1 << 5,
+        /* Flag that disk is PCIE storage */
+        kPcie = 1 << 5,
+		kStub = 1 << 6,
     };
 
     const std::string& getId() const { return mId; }

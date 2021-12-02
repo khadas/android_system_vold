@@ -73,10 +73,14 @@ static const unsigned int kMajorBlockScsiN = 133;
 static const unsigned int kMajorBlockScsiO = 134;
 static const unsigned int kMajorBlockScsiP = 135;
 static const unsigned int kMajorBlockMmc = 179;
+static const unsigned int kMajorBlockPcie = 259;
 static const unsigned int kMajorBlockDynamicMin = 234;
 static const unsigned int kMajorBlockDynamicMax = 512;
 
 static const char* kGptBasicData = "EBD0A0A2-B9E5-4433-87C0-68B6B72699C7";
+static const char* kGptLinuxBasicData = "0FC63DAF-8483-4772-8E79-3D69D8477DE4";
+static const char* kGptRK33xxData = "B921B045-1DF0-41C3-AF44-4C6F280D3FAE";
+static const char* kGptRKData = "69DAD710-2CE4-4E3C-B16C-21A1D49ABED3";
 static const char* kGptAndroidMeta = "19A710A2-B3CA-11E4-B026-10604B889DCF";
 static const char* kGptAndroidExpand = "193D1EA4-B3CA-11E4-B075-10604B889DCF";
 
@@ -86,10 +90,6 @@ enum class Table {
     kGpt,
 };
 
-static bool isNvmeBlkDevice(unsigned int major, const std::string& sysPath) {
-    return sysPath.find("nvme") != std::string::npos && major >= kMajorBlockDynamicMin &&
-           major <= kMajorBlockDynamicMax;
-}
 
 Disk::Disk(const std::string& eventPath, dev_t device, const std::string& nickname, int flags)
     : mDevice(device),
@@ -266,6 +266,17 @@ status_t Disk::readMetadata() {
             mLabel = tmp;
             break;
         }
+	    case kMajorBlockPcie: {
+	        std::string path(mSysPath + "/device/model");
+	        std::string tmp;
+	        if (!ReadFileToString(path, &tmp)) {
+	            PLOG(WARNING) << "Failed to read model from " << path;
+	            return -errno;
+	        }
+	        tmp = android::base::Trim(tmp);
+	        mLabel = tmp;
+	        break;
+	    }		
         case kMajorBlockMmc: {
             std::string path(mSysPath + "/device/manfid");
             std::string tmp;
@@ -297,16 +308,6 @@ status_t Disk::readMetadata() {
                 LOG(DEBUG) << "Recognized experimental block major ID " << majorId
                            << " as virtio-blk (emulator's virtual SD card device)";
                 mLabel = "Virtual";
-                break;
-            }
-            if (isNvmeBlkDevice(majorId, mSysPath)) {
-                std::string path(mSysPath + "/device/model");
-                std::string tmp;
-                if (!ReadFileToString(path, &tmp)) {
-                    PLOG(WARNING) << "Failed to read vendor from " << path;
-                    return -errno;
-                }
-                mLabel = tmp;
                 break;
             }
             LOG(WARNING) << "Unsupported block major type " << majorId;
@@ -447,6 +448,7 @@ status_t Disk::readPartitions() {
                     case 0x0b:  // W95 FAT32 (LBA)
                     case 0x0c:  // W95 FAT32 (LBA)
                     case 0x0e:  // W95 FAT16 (LBA)
+                    case 0x83:  // W95 FAT16 (LBA)
                         createPublicVolume(partDevice);
                         break;
                     default :
@@ -467,6 +469,10 @@ status_t Disk::readPartitions() {
                     createPublicVolume(partDevice);
                 } else if (android::base::EqualsIgnoreCase(typeGuid, kGptAndroidExpand)) {
                     createPrivateVolume(partDevice, partGuid);
+                } else if (android::base::EqualsIgnoreCase(typeGuid, kGptLinuxBasicData) ||
+                    android::base::EqualsIgnoreCase(typeGuid, kGptRK33xxData) ||
+                    android::base::EqualsIgnoreCase(typeGuid, kGptRKData)){
+                    createPublicVolume(partDevice);
                 }
             }
         }
@@ -662,18 +668,21 @@ int Disk::getMaxMinors() {
             }
             return std::stoi(tmp);
         }
+	    case kMajorBlockPcie: {
+	        // Per Documentation/devices.txt this is dynamic
+	        std::string tmp;
+	        if (!ReadFileToString(kSysfsMmcMaxMinors, &tmp) &&
+	                !ReadFileToString(kSysfsMmcMaxMinorsDeprecated, &tmp)) {
+	            LOG(ERROR) << "Failed to read max minors";
+	            return -errno;
+	        }
+	        return std::stoi(tmp);
+	    }		
         default: {
             if (IsVirtioBlkDevice(majorId)) {
                 // drivers/block/virtio_blk.c has "#define PART_BITS 4", so max is
                 // 2^4 - 1 = 15
                 return 15;
-            }
-            if (isNvmeBlkDevice(majorId, mSysPath)) {
-                // despite kernel nvme driver supports up to 1M minors,
-                //     #define NVME_MINORS (1U << MINORBITS)
-                // sgdisk can not support more than 127 partitions, due to
-                //     #define MAX_MBR_PARTS 128
-                return 127;
             }
         }
     }
