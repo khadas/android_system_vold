@@ -58,15 +58,15 @@ bool IsSupported() {
     LOG(INFO) << "IsSupported() -ntfs-3g-> " << access(NTFS_3G_PATH, X_OK);
     LOG(INFO) << "IsSupported() -ntfsfix-> " << access(NTFSFIX_3G_PATH, X_OK);
     LOG(INFO) << "IsSupported() -mkntfs-> " << access(MKNTFS_3G_PATH, X_OK);
-    LOG(INFO) << "IsSupported() --> " << IsFilesystemSupported("ntfs");
-    return IsFilesystemSupported("ntfs");
+    LOG(INFO) << "IsSupported() --> " << IsFilesystemSupported("ntfs3");
+    return IsFilesystemSupported("ntfs3");
 }
 
 
 status_t Check(const std::string& source) {
     std::vector<std::string> cmd;
     cmd.push_back(NTFSFIX_3G_PATH);
-    cmd.push_back("-n");
+//    cmd.push_back("-n");
     cmd.push_back(source);
 
     int rc = ForkExecvp(cmd, nullptr, sFsckUntrustedContext);
@@ -85,9 +85,10 @@ status_t Mount(const std::string& source, const std::string& target, bool ro,
                 bool createLost) {
 
     auto mountData = android::base::StringPrintf(
-        "locale=utf8,uid=%d,gid=%d,fmask=%o,dmask=%o",
+        "uid=%d,gid=%d,fmask=%o,dmask=%o",
             ownerUid, ownerGid, permMask, permMask);
 
+/*
     std::vector<std::string> cmd;
     cmd.push_back(NTFS_3G_PATH);
     cmd.push_back(source.c_str());
@@ -96,8 +97,13 @@ status_t Mount(const std::string& source, const std::string& target, bool ro,
     cmd.push_back(mountData.c_str());
 
     int rc = ForkExecvp(cmd, nullptr, sFsckUntrustedContext);
+*/
+
+    int flags = MS_NODEV | MS_NOSUID | MS_DIRSYNC | MS_NOATIME | MS_NOEXEC;
+    int rc = mount(source.c_str(), target.c_str(), "ntfs3", flags, mountData.c_str());
+
     if (rc != 0) {
-        LOG(ERROR) << "ntfs Mount error";
+        LOG(ERROR) << "ntfs3 Mount error";
         errno = EIO;
         return -1;
     }
