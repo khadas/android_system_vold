@@ -85,7 +85,7 @@ status_t Mount(const std::string& source, const std::string& target, bool ro,
                 bool createLost) {
 
     auto mountData = android::base::StringPrintf(
-        "uid=%d,gid=%d,fmask=%o,dmask=%o",
+        "iocharset=utf8,uid=%d,gid=%d,fmask=%o,dmask=%o",
             ownerUid, ownerGid, permMask, permMask);
 
 /*
