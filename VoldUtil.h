@@ -17,7 +17,9 @@
 #pragma once
 
 #include <fstab/fstab.h>
+#include <sys/cdefs.h>
 
 extern android::fs_mgr::Fstab fstab_default;
 
 #define DATA_MNT_POINT "/data"
+#define ARRAY_SIZE(a) (sizeof(a) / sizeof(*(a)))
